@@ -1,0 +1,16 @@
+name: Daily search
+
+on:
+  schedule:
+    - cron: "10 7 * * *" # Runs daily at 07:10 UTC
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call BIF daily cron
+        run: |
+          curl -sS -X POST "${{ secrets.CRON_URL }}" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"
