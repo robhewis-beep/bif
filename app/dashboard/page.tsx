@@ -14,6 +14,7 @@ type TrackedItem = {
   currency: string;
   search_frequency: string;
   is_active: boolean;
+  is_paused: boolean;
 };
 
 export default function DashboardPage() {
@@ -34,7 +35,7 @@ export default function DashboardPage() {
 
     const { data, error } = await supabase
       .from("tracked_items")
-      .select("id, brand, item_name, size, max_price, currency, search_frequency, is_active")
+      .select("id, brand, item_name, category, size, search_query, max_price, currency, search_frequency, is_active, is_paused")
       .order("created_at", { ascending: false });
 
     if (error) setError(error.message);
@@ -205,19 +206,54 @@ export default function DashboardPage() {
             <p>No tracked items yet. Click “Add item”.</p>
           ) : (
             items.map((it) => (
-              <div key={it.id} style={{ border: "1px solid #ddd", borderRadius: 12, padding: 12 }}>
-                <div style={{ fontWeight: 800 }}>
-                  {it.brand} — {it.item_name}
-                </div>
-                <div style={{ opacity: 0.8, marginTop: 6 }}>
-                  Size: {it.size} • Max: {it.currency} {it.max_price} • {it.search_frequency} •{" "}
-                  {it.is_active ? "Active" : "Paused"}
-                </div>
-              </div>
-            ))
+  <div key={it.id} style={{ border: "1px solid #ddd", borderRadius: 12, padding: 12 }}>
+    <div style={{ fontWeight: 800 }}>
+      {it.brand} — {it.item_name}
+    </div>
+
+    <div style={{ opacity: 0.8, marginTop: 6 }}>
+      Size: {it.size} • Max: {it.currency} {it.max_price} • {it.search_frequency} •{" "}
+      {it.is_paused ? "Paused" : "Active"}
+    </div>
+
+    {/* ✅ NEW: Saved search controls */}
+    <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+      <button
+        type="button"
+        onClick={async () => {
+          await supabase
+            .from("tracked_items")
+            .update({ is_paused: !it.is_paused })
+            .eq("id", it.id);
+          await load(); // refresh list
+        }}
+        style={{ padding: "8px 12px", borderRadius: 10, fontWeight: 800 }}
+      >
+        {it.is_paused ? "Resume" : "Pause"}
+      </button>
+
+      <button
+        type="button"
+        onClick={async () => {
+          const ok = confirm("Delete this search item?");
+          if (!ok) return;
+          await supabase
+            .from("tracked_items")
+            .update({ is_active: false })
+            .eq("id", it.id);
+          await load();
+        }}
+        style={{ padding: "8px 12px", borderRadius: 10, fontWeight: 800 }}
+      >
+        Delete
+      </button>
+    </div>
+  </div>
+))
           )}
         </div>
       )}
     </main>
   );
 }
+
