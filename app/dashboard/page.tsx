@@ -233,20 +233,32 @@ export default function DashboardPage() {
       </button>
 
       <button
-        type="button"
-        onClick={async () => {
-          const ok = confirm("Delete this search item?");
-          if (!ok) return;
-          await supabase
-            .from("tracked_items")
-            .update({ is_active: false })
-            .eq("id", it.id);
-          await load();
-        }}
-        style={{ padding: "8px 12px", borderRadius: 10, fontWeight: 800 }}
-      >
-        Delete
-      </button>
+  type="button"
+  onClick={async () => {
+    const ok = confirm("Delete this search item?");
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from("tracked_items")
+      .update({ is_active: false })
+      .eq("id", it.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    // ✅ immediately remove from UI
+    setItems((prev) => prev.filter((x) => x.id !== it.id));
+
+    // Optional: also refresh from DB (safe but not required)
+    // await load();
+  }}
+  style={{ padding: "8px 12px", borderRadius: 10, fontWeight: 800 }}
+>
+  Delete
+</button>
+
     </div>
   </div>
 ))
