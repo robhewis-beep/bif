@@ -11,8 +11,13 @@ type FoundRow = {
   title: string;
   listing_url: string;
   matched_at: string;
-  tracked_items: { brand: string; item_name: string; size: string }[]; // <-- array
+  tracked_item: null | {
+    brand: string;
+    item_name: string;
+    size: string;
+  };
 };
+
 
 type GroupedRow = FoundRow & { isNew: boolean };
 
@@ -20,6 +25,8 @@ export default function FoundPage() {
   const router = useRouter();
   const [rows, setRows] = useState<FoundRow[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [lastViewed, setLastViewed] = useState<string>("1970-01-01T00:00:00Z");
 
   const [lastSeen, setLastSeen] = useState<number>(0);
   const [userId, setUserId] = useState<string>("");
@@ -43,7 +50,20 @@ export default function FoundPage() {
       router.push("/login");
       return;
     }
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+      if (userId) {
+    await supabase.from("profiles").upsert({ id: userId }, { onConflict: "id" });
 
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("last_found_viewed_at")
+      .eq("id", userId)
+      .single();
+
+    const lv = profile?.last_found_viewed_at ?? "1970-01-01T00:00:00Z";
+    setLastViewed(lv);
+  }
     const uid = session.user.id;
     setUserId(uid);
 
@@ -51,15 +71,33 @@ export default function FoundPage() {
     setLastSeen(prev);
 
     const { data, error } = await supabase
-      .from("found_listings")
-      .select("id, platform, title, listing_url, matched_at, tracked_items(brand, item_name, size)")
-      .order("matched_at", { ascending: false })
-      .limit(200);
+  .from("found_listings")
+  .select(`
+    id, platform, title, listing_url, matched_at,
+    tracked_item:tracked_items!found_listings_tracked_item_id_fkey ( brand, item_name, size )
+  `)
+  .order("matched_at", { ascending: false })
+  .limit(200);
+
 
     if (error) console.error(error);
 
-    setRows((data ?? []) as FoundRow[]);
+    const mappedRows = (data ?? []).map((row: any) => ({
+      ...row,
+      tracked_items: row.tracked_item,
+    })) as FoundRow[];
+
+    setRows(mappedRows);
     setLoading(false);
+    const { data: userData2 } = await supabase.auth.getUser();
+const userId2 = userData2.user?.id;
+
+if (userId2) {
+  await supabase
+    .from("profiles")
+    .update({ last_found_viewed_at: new Date().toISOString() })
+    .eq("id", userId2);
+}
 
     // Update last-seen after load
   }
@@ -73,8 +111,10 @@ export default function FoundPage() {
     const map = new Map<string, GroupedRow[]>();
 
     for (const r of rows) {
-        const ti = r.tracked_items?.[0];
-        const key = ti ? `${ti.brand} — ${ti.item_name} (${ti.size})` : "Unknown search item";
+        const ti = r.tracked_item;
+const key = ti ? `${ti.brand} — ${ti.item_name} (${ti.size})` : "Unknown search item";
+
+
       const isNew = new Date(r.matched_at).getTime() > lastSeen;
 
       const rowWithNew: GroupedRow = { ...r, isNew };
@@ -149,7 +189,11 @@ export default function FoundPage() {
               </summary>
 
               <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                {groupRows.map((r) => (
+                {groupRows.map((r) => {
+  const isNew =
+    new Date(r.matched_at).getTime() > new Date(lastViewed).getTime();
+
+  return (
                   <a
                     key={r.id}
                     href={r.listing_url}
@@ -171,7 +215,23 @@ export default function FoundPage() {
                         gap: 12,
                       }}
                     >
-                      <div style={{ fontWeight: 700 }}>{r.title}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+  <div style={{ fontWeight: 700 }}>{r.title}</div>
+  {isNew && (
+    <span
+      style={{
+        fontSize: 12,
+        fontWeight: 800,
+        padding: "2px 8px",
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.25)",
+        background: "rgba(0,0,0,0.35)",
+      }}
+    >
+      NEW
+    </span>
+  )}
+</div>
 
                       {r.isNew && (
                         <span
@@ -192,7 +252,8 @@ export default function FoundPage() {
                       {r.platform} • {new Date(r.matched_at).toLocaleString()}
                     </div>
                   </a>
-                ))}
+                );
+              })}
               </div>
             </details>
           ))}
@@ -201,3 +262,4 @@ export default function FoundPage() {
     </main>
   );
 }
+

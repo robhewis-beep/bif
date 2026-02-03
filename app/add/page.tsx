@@ -13,6 +13,11 @@ export default function AddPage() {
   const [size, setSize] = useState("");
   const [maxPrice, setMaxPrice] = useState<number>(100);
 
+  // Saved search controls
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFrequency, setSearchFrequency] = useState<"daily" | "weekly">("daily");
+  const [isPaused, setIsPaused] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,9 +41,13 @@ export default function AddPage() {
         item_name: itemName,
         category,
         size,
-        max_price: maxPrice,
+
+        search_query: searchQuery || null,
+        max_price: maxPrice ? Number(maxPrice) : null,
+        search_frequency: searchFrequency,
+        is_paused: isPaused,
+
         currency: "GBP",
-        search_frequency: "daily",
         is_active: true,
       });
 
@@ -57,6 +66,8 @@ export default function AddPage() {
       <h1 style={{ fontSize: 26, fontWeight: 800 }}>Add item</h1>
 
       <form onSubmit={onSubmit} style={{ marginTop: 16, display: "grid", gap: 12 }}>
+        <p style={{ fontWeight: 800 }}>✅ ADD PAGE MARKER</p>
+
         <input
           style={{ padding: 10 }}
           placeholder="Brand"
@@ -64,6 +75,7 @@ export default function AddPage() {
           onChange={(e) => setBrand(e.target.value)}
           required
         />
+
         <input
           style={{ padding: 10 }}
           placeholder="Item name / keywords"
@@ -71,6 +83,7 @@ export default function AddPage() {
           onChange={(e) => setItemName(e.target.value)}
           required
         />
+
         <input
           style={{ padding: 10 }}
           placeholder="Category (e.g., jacket)"
@@ -78,6 +91,7 @@ export default function AddPage() {
           onChange={(e) => setCategory(e.target.value)}
           required
         />
+
         <input
           style={{ padding: 10 }}
           placeholder="Size (e.g., M, 32, UK 9)"
@@ -85,6 +99,7 @@ export default function AddPage() {
           onChange={(e) => setSize(e.target.value)}
           required
         />
+
         <input
           style={{ padding: 10 }}
           type="number"
@@ -94,6 +109,41 @@ export default function AddPage() {
           onChange={(e) => setMaxPrice(Number(e.target.value))}
           required
         />
+
+        {/* Saved search controls */}
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontWeight: 700 }}>Search query (optional)</span>
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder='e.g. "Carhartt Detroit jacket size M"'
+            style={{ padding: 10, borderRadius: 10 }}
+          />
+          <span style={{ opacity: 0.7, fontSize: 12 }}>
+            Leave blank to auto-build from brand + item name + size.
+          </span>
+        </label>
+
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontWeight: 700 }}>Search frequency</span>
+          <select
+            value={searchFrequency}
+            onChange={(e) => setSearchFrequency(e.target.value as "daily" | "weekly")}
+            style={{ padding: 10, borderRadius: 10 }}
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </label>
+
+        <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <input
+            type="checkbox"
+            checked={isPaused}
+            onChange={(e) => setIsPaused(e.target.checked)}
+          />
+          <span style={{ fontWeight: 700 }}>Pause this search</span>
+        </label>
 
         {error && <div style={{ color: "crimson" }}>{error}</div>}
 

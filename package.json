@@ -14,7 +14,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "resend": "^6.8.0",
-    "vercel": "^50.5.0"
+    "vercel": "^50.8.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
