@@ -10,6 +10,7 @@ type FoundRow = {
   platform: string;
   title: string;
   listing_url: string;
+  image_url: string | null;
   matched_at: string;
   tracked_item: null | {
     brand: string;
@@ -73,9 +74,9 @@ export default function FoundPage() {
     const { data, error } = await supabase
   .from("found_listings")
   .select(`
-    id, platform, title, listing_url, matched_at,
-    tracked_item:tracked_items!found_listings_tracked_item_id_fkey ( brand, item_name, size )
-  `)
+  id, platform, title, listing_url, image_url, matched_at,
+  tracked_item:tracked_items!found_listings_tracked_item_id_fkey ( brand, item_name, size )
+`)
   .order("matched_at", { ascending: false })
   .limit(200);
 
@@ -129,6 +130,10 @@ const key = ti ? `${ti.brand} — ${ti.item_name} (${ti.size})` : "Unknown searc
   return (
     <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ marginTop: 10, opacity: 0.8, fontSize: 13 }}>
+  Rows: {rows.length} • With images: {rows.filter((r) => !!r.image_url).length} • First image:{" "}
+  {rows.find((r) => r.image_url)?.image_url ?? "none"}
+</div>
         <h1 style={{ fontSize: 26, fontWeight: 800 }}>Found listings</h1>
 
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -189,72 +194,66 @@ const key = ti ? `${ti.brand} — ${ti.item_name} (${ti.size})` : "Unknown searc
               </summary>
 
               <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                {groupRows.map((r) => {
-  const isNew =
-    new Date(r.matched_at).getTime() > new Date(lastViewed).getTime();
+  {groupRows.map((r) => {
+    const isNew = new Date(r.matched_at).getTime() > new Date(lastViewed).getTime();
 
-  return (
-                  <a
-                    key={r.id}
-                    href={r.listing_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      border: "1px solid #eee",
-                      borderRadius: 10,
-                      padding: 10,
-                      textDecoration: "none",
-                      display: "block",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-  <div style={{ fontWeight: 700 }}>{r.title}</div>
-  {isNew && (
-    <span
-      style={{
-        fontSize: 12,
-        fontWeight: 800,
-        padding: "2px 8px",
-        borderRadius: 999,
-        border: "1px solid rgba(255,255,255,0.25)",
-        background: "rgba(0,0,0,0.35)",
-      }}
-    >
-      NEW
-    </span>
-  )}
+    return (
+      <a
+        key={r.id}
+        href={r.listing_url}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          border: "1px solid #eee",
+          borderRadius: 10,
+          padding: 10,
+          textDecoration: "none",
+          display: "flex",
+          gap: 12,
+          alignItems: "center",
+        }}
+      >
+        {r.image_url ? (
+          <img
+            src={r.image_url}
+            alt={r.title || "Listing image"}
+            style={{
+              width: 72,
+              height: 72,
+              objectFit: "cover",
+              borderRadius: 8,
+              flex: "0 0 auto",
+            }}
+          />
+        ) : null}
+
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontWeight: 700 }}>{r.title}</div>
+            {isNew ? (
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.25)",
+                  background: "rgba(0,0,0,0.35)",
+                }}
+              >
+                NEW
+              </span>
+            ) : null}
+          </div>
+
+          <div style={{ opacity: 0.8, marginTop: 6 }}>
+            {r.platform} • {new Date(r.matched_at).toLocaleString()}
+          </div>
+        </div>
+      </a>
+    );
+  })}
 </div>
-
-                      {r.isNew && (
-                        <span
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 800,
-                            padding: "2px 8px",
-                            borderRadius: 999,
-                            border: "1px solid #ddd",
-                          }}
-                        >
-                          New
-                        </span>
-                      )}
-                    </div>
-
-                    <div style={{ opacity: 0.8, marginTop: 6 }}>
-                      {r.platform} • {new Date(r.matched_at).toLocaleString()}
-                    </div>
-                  </a>
-                );
-              })}
-              </div>
             </details>
           ))}
         </div>
@@ -262,4 +261,3 @@ const key = ti ? `${ti.brand} — ${ti.item_name} (${ti.size})` : "Unknown searc
     </main>
   );
 }
-
