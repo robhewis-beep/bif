@@ -1,23 +1,39 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
-// eBay sends a GET challenge first to verify the endpoint
+export const runtime = "nodejs";
+
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const challengeCode = searchParams.get("challenge_code");
+  const url = new URL(req.url);
+  const challengeCode = url.searchParams.get("challenge_code");
 
   if (!challengeCode) {
-    return new NextResponse("Missing challenge_code", { status: 400 });
+    return NextResponse.json({ error: "Missing challenge_code" }, { status: 400 });
   }
 
-  // Echo back the challenge code exactly as eBay requires
-  return new NextResponse(challengeCode, {
-    status: 200,
-    headers: { "Content-Type": "text/plain" },
-  });
+  const verificationToken = process.env.EBAY_VERIFICATION_TOKEN;
+  if (!verificationToken) {
+    return NextResponse.json({ error: "Missing EBAY_VERIFICATION_TOKEN" }, { status: 500 });
+  }
+
+  // Must be origin + pathname exactly, no query string
+  const endpoint = `${url.origin}${url.pathname}`;
+
+  const challengeResponse = crypto
+    .createHash("sha256")
+    .update(challengeCode + verificationToken + endpoint)
+    .digest("hex");
+
+  return NextResponse.json({ challengeResponse }, { status: 200 });
 }
 
-// eBay may POST account-deletion events here in the future
-export async function POST() {
-  // You don't store eBay users, so just acknowledge
-  return NextResponse.json({ received: true });
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    console.log("[ebay deletion notification] received:", body);
+    return NextResponse.json({ received: true }, { status: 200 });
+  } catch (e) {
+    console.log("[ebay deletion notification] non-json or empty body");
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
 }
