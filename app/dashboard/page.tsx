@@ -10,11 +10,12 @@ type TrackedItem = {
   brand: string;
   item_name: string;
   size: string;
-  max_price: number;
-  currency: string;
+  max_price: number | null;
+  currency: string | null;
   search_frequency: string;
   is_active: boolean;
   is_paused: boolean;
+  reference_image_url: string | null;
 };
 
 export default function DashboardPage() {
@@ -35,7 +36,10 @@ export default function DashboardPage() {
 
     const { data, error } = await supabase
       .from("tracked_items")
-      .select("id, brand, item_name, category, size, search_query, max_price, currency, search_frequency, is_active, is_paused")
+      .select(
+        "id, brand, item_name, category, size, search_query, max_price, currency, search_frequency, is_active, is_paused, reference_image_url"
+      )
+      .eq("is_active", true)
       .order("created_at", { ascending: false });
 
     if (error) setError(error.message);
@@ -48,94 +52,38 @@ export default function DashboardPage() {
     router.push("/login");
   }
 
-  // ✅ Runs the search + saves listings + triggers email digest
   async function runSearchAndEmail() {
-    // 1) Confirm user is logged in
-    const { data: sessionData } = await supabase.auth.getSession();
-    const session = sessionData.session;
-    const user = session?.user;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
 
-    if (!user) {
-      alert("Not logged in");
-      router.push("/login");
-      return;
-    }
-
-    // 2) Load active tracked items
-    const { data: tracked, error: trackedErr } = await supabase
-      .from("tracked_items")
-      .select("id, brand, item_name, size, currency")
-      .eq("is_active", true);
-
-    if (trackedErr) {
-      alert("Error loading tracked items: " + trackedErr.message);
-      return;
-    }
-
-    if (!tracked || tracked.length === 0) {
-      alert("No active tracked items to search.");
-      return;
-    }
-
-    let totalUpserted = 0;
-
-    // 3) Search eBay for each tracked item and upsert results
-    for (const item of tracked) {
-      const query = `${item.brand} ${item.item_name} ${item.size}`.trim();
-
-      const res = await fetch("/api/search/ebay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        alert(`eBay search error for "${query}": ${data.error}`);
-        continue;
+      if (!token) {
+        router.push("/login");
+        return;
       }
 
-      const listings = (data.listings ?? []) as { url: string; title?: string }[];
-      if (listings.length === 0) continue;
-
-      const rows = listings.map((l) => ({
-        user_id: user.id,
-        tracked_item_id: item.id,
-        platform: "ebay",
-        listing_url: l.url,
-        title: l.title ?? "eBay listing",
-        currency: item.currency ?? "GBP",
-      }));
-
-      const { error: upsertErr } = await supabase.from("found_listings").upsert(rows, {
-        onConflict: "user_id,platform,listing_url",
-        ignoreDuplicates: true,
-      });
-
-      if (upsertErr) {
-        alert(`Save error for "${query}": ${upsertErr.message}`);
-        continue;
-      }
-
-      totalUpserted += rows.length;
-    }
-
-    // 4) Trigger server-side email digest for any unnotified listings
-    const token = session?.access_token;
-    if (token) {
-      const resp = await fetch("/api/alerts/send-new", {
+      const resp = await fetch("/api/search/run-now", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       const out = await resp.json();
-      if (out?.error) {
-        alert("Email alert error: " + out.error);
-      }
-    }
 
-    alert(`Done. Upserted about ${totalUpserted} listing rows. (Email digest sent if there were new ones.)`);
+      if (!resp.ok) {
+        alert(`Run-now error: ${out?.error ?? "Unknown error"}`);
+        return;
+      }
+
+      await load();
+
+      alert(
+        `Done. Searched ${out.searched ?? 0} items, upserted ${out.upserted ?? 0} listings, emailed ${out.emailed ?? 0} users.`
+      );
+    } catch (err: any) {
+      alert(err?.message ?? "Something went wrong running the search.");
+    }
   }
 
   useEffect(() => {
@@ -206,66 +154,105 @@ export default function DashboardPage() {
             <p>No tracked items yet. Click “Add item”.</p>
           ) : (
             items.map((it) => (
-  <div key={it.id} style={{ border: "1px solid #ddd", borderRadius: 12, padding: 12 }}>
-    <div style={{ fontWeight: 800 }}>
-      {it.brand} — {it.item_name}
-    </div>
+              <div
+                key={it.id}
+                style={{ border: "1px solid #ddd", borderRadius: 12, padding: 12 }}
+              >
+                {it.reference_image_url ? (
+                  <img
+                    src={it.reference_image_url}
+                    alt={`${it.brand} ${it.item_name}`}
+                    style={{
+                      width: 72,
+                      height: 72,
+                      objectFit: "cover",
+                      borderRadius: 10,
+                      border: "1px solid #ddd",
+                      marginBottom: 10,
+                    }}
+                  />
+                ) : null}
 
-    <div style={{ opacity: 0.8, marginTop: 6 }}>
-      Size: {it.size} • Max: {it.currency} {it.max_price} • {it.search_frequency} •{" "}
-      {it.is_paused ? "Paused" : "Active"}
-    </div>
+                <div style={{ fontWeight: 800 }}>
+                  {it.brand} — {it.item_name}
+                </div>
 
-    {/* ✅ NEW: Saved search controls */}
-    <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-      <button
-        type="button"
-        onClick={async () => {
-          await supabase
-            .from("tracked_items")
-            .update({ is_paused: !it.is_paused })
-            .eq("id", it.id);
-          await load(); // refresh list
-        }}
-        style={{ padding: "8px 12px", borderRadius: 10, fontWeight: 800 }}
-      >
-        {it.is_paused ? "Resume" : "Pause"}
-      </button>
+                <div style={{ opacity: 0.8, marginTop: 6 }}>
+                  Size: {it.size} • Max: {it.currency ?? "GBP"} {it.max_price ?? "—"} •{" "}
+                  {it.search_frequency} • {it.is_paused ? "Paused" : "Active"}
+                </div>
 
-      <button
-  type="button"
-  onClick={async () => {
-    const ok = confirm("Delete this search item?");
-    if (!ok) return;
+                <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await supabase
+                        .from("tracked_items")
+                        .update({ is_paused: !it.is_paused })
+                        .eq("id", it.id);
+                      await load();
+                    }}
+                    style={{ padding: "8px 12px", borderRadius: 10, fontWeight: 800 }}
+                  >
+                    {it.is_paused ? "Resume" : "Pause"}
+                  </button>
 
-    const { error } = await supabase
-      .from("tracked_items")
-      .update({ is_active: false })
-      .eq("id", it.id);
+                  <Link
+                    href={`/found?tracked_item_id=${it.id}`}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      fontWeight: 800,
+                      textDecoration: "none",
+                      border: "1px solid #ddd",
+                      color: "inherit",
+                    }}
+                  >
+                    View found
+                  </Link>
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+                  <Link
+                    href={`/found?tracked_item_id=${it.id}`}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      fontWeight: 800,
+                      textDecoration: "none",
+                      border: "1px solid #ddd",
+                      color: "inherit",
+                    }}
+                  >
+                    View new
+                  </Link>
 
-    // ✅ immediately remove from UI
-    setItems((prev) => prev.filter((x) => x.id !== it.id));
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = confirm("Delete this search item?");
+                      if (!ok) return;
 
-    // Optional: also refresh from DB (safe but not required)
-    // await load();
-  }}
-  style={{ padding: "8px 12px", borderRadius: 10, fontWeight: 800 }}
->
-  Delete
-</button>
+                      const { error } = await supabase
+                        .from("tracked_items")
+                        .update({ is_active: false })
+                        .eq("id", it.id);
 
-    </div>
-  </div>
-))
+                      if (error) {
+                        alert(error.message);
+                        return;
+                      }
+
+                      setItems((prev) => prev.filter((x) => x.id !== it.id));
+                    }}
+                    style={{ padding: "8px 12px", borderRadius: 10, fontWeight: 800 }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))
           )}
         </div>
       )}
     </main>
   );
 }
-
