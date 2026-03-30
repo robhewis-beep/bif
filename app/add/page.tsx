@@ -12,14 +12,36 @@ export default function AddPage() {
   const [category, setCategory] = useState("jacket");
   const [size, setSize] = useState("");
   const [maxPrice, setMaxPrice] = useState<number>(100);
-
-  // Saved search controls
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFrequency, setSearchFrequency] = useState<"daily" | "weekly">("daily");
   const [isPaused, setIsPaused] = useState(false);
 
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function uploadReferenceImage(userId: string) {
+    if (!imageFile) return null;
+
+    const ext = imageFile.name.split(".").pop()?.toLowerCase() || "jpg";
+    const filePath = `${userId}/${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("tracked-item-images")
+      .upload(filePath, imageFile, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error(`Image upload failed: ${uploadError.message}`);
+    }
+
+    const { data } = supabase.storage.from("tracked-item-images").getPublicUrl(filePath);
+    return data.publicUrl;
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,20 +57,21 @@ export default function AddPage() {
         return;
       }
 
+      const referenceImageUrl = await uploadReferenceImage(user.id);
+
       const { error } = await supabase.from("tracked_items").insert({
         user_id: user.id,
         brand,
         item_name: itemName,
         category,
         size,
-
         search_query: searchQuery || null,
         max_price: maxPrice ? Number(maxPrice) : null,
         search_frequency: searchFrequency,
         is_paused: isPaused,
-
         currency: "GBP",
         is_active: true,
+        reference_image_url: referenceImageUrl,
       });
 
       if (error) throw error;
@@ -66,51 +89,103 @@ export default function AddPage() {
       <h1 style={{ fontSize: 26, fontWeight: 800 }}>Add item</h1>
 
       <form onSubmit={onSubmit} style={{ marginTop: 16, display: "grid", gap: 12 }}>
-        <p style={{ fontWeight: 800 }}>✅ ADD PAGE MARKER</p>
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontWeight: 700 }}>Reference image (optional)</span>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              setImageFile(file);
 
-        <input
-          style={{ padding: 10 }}
-          placeholder="Brand"
-          value={brand}
-          onChange={(e) => setBrand(e.target.value)}
-          required
-        />
+              if (imagePreviewUrl) {
+                URL.revokeObjectURL(imagePreviewUrl);
+              }
 
-        <input
-          style={{ padding: 10 }}
-          placeholder="Item name / keywords"
-          value={itemName}
-          onChange={(e) => setItemName(e.target.value)}
-          required
-        />
+              if (file) {
+                const url = URL.createObjectURL(file);
+                setImagePreviewUrl(url);
+              } else {
+                setImagePreviewUrl(null);
+              }
+            }}
+          />
+        </label>
 
-        <input
-          style={{ padding: 10 }}
-          placeholder="Category (e.g., jacket)"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          required
-        />
+        {imagePreviewUrl ? (
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Preview</div>
+            <img
+              src={imagePreviewUrl}
+              alt="Reference preview"
+              style={{
+                width: 160,
+                height: 160,
+                objectFit: "cover",
+                borderRadius: 12,
+                border: "1px solid #ddd",
+              }}
+            />
+          </div>
+        ) : null}
 
-        <input
-          style={{ padding: 10 }}
-          placeholder="Size (e.g., M, 32, UK 9)"
-          value={size}
-          onChange={(e) => setSize(e.target.value)}
-          required
-        />
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontWeight: 700 }}>Brand</span>
+          <input
+            style={{ padding: 10 }}
+            placeholder="Brand"
+            value={brand}
+            onChange={(e) => setBrand(e.target.value)}
+            required
+          />
+        </label>
 
-        <input
-          style={{ padding: 10 }}
-          type="number"
-          min={1}
-          step="1"
-          value={maxPrice}
-          onChange={(e) => setMaxPrice(Number(e.target.value))}
-          required
-        />
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontWeight: 700 }}>Item name / keywords</span>
+          <input
+            style={{ padding: 10 }}
+            placeholder="Item name / keywords"
+            value={itemName}
+            onChange={(e) => setItemName(e.target.value)}
+            required
+          />
+        </label>
 
-        {/* Saved search controls */}
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontWeight: 700 }}>Category</span>
+          <input
+            style={{ padding: 10 }}
+            placeholder="Category (e.g. jacket)"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            required
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontWeight: 700 }}>Size</span>
+          <input
+            style={{ padding: 10 }}
+            placeholder="Size (e.g. M, 32, UK 9)"
+            value={size}
+            onChange={(e) => setSize(e.target.value)}
+            required
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontWeight: 700 }}>Max price</span>
+          <input
+            style={{ padding: 10 }}
+            type="number"
+            min={1}
+            step="1"
+            value={maxPrice}
+            onChange={(e) => setMaxPrice(Number(e.target.value))}
+            required
+          />
+        </label>
+
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 700 }}>Search query (optional)</span>
           <input
@@ -145,7 +220,7 @@ export default function AddPage() {
           <span style={{ fontWeight: 700 }}>Pause this search</span>
         </label>
 
-        {error && <div style={{ color: "crimson" }}>{error}</div>}
+        {error ? <div style={{ color: "crimson" }}>{error}</div> : null}
 
         <button style={{ padding: 10, fontWeight: 800 }} disabled={loading}>
           {loading ? "Saving..." : "Save tracked item"}
