@@ -18,12 +18,17 @@ export default function AddPage() {
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
 
+  const [suggesting, setSuggesting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function uploadReferenceImage(userId: string) {
     if (!imageFile) return null;
+
+    // Reuse already-uploaded image if we have one
+    if (uploadedImageUrl) return uploadedImageUrl;
 
     const ext = imageFile.name.split(".").pop()?.toLowerCase() || "jpg";
     const filePath = `${userId}/${Date.now()}.${ext}`;
@@ -39,8 +44,68 @@ export default function AddPage() {
       throw new Error(`Image upload failed: ${uploadError.message}`);
     }
 
-    const { data } = supabase.storage.from("tracked-item-images").getPublicUrl(filePath);
-    return data.publicUrl;
+    const { data } = supabase.storage
+      .from("tracked-item-images")
+      .getPublicUrl(filePath);
+
+    const publicUrl = data.publicUrl;
+    setUploadedImageUrl(publicUrl);
+    return publicUrl;
+  }
+
+  async function suggestFromImage() {
+    if (!imageFile) {
+      setError("Please choose an image first.");
+      return;
+    }
+
+    setSuggesting(true);
+    setError(null);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const imageUrl = await uploadReferenceImage(user.id);
+
+      if (!imageUrl) {
+        throw new Error("Could not upload image for analysis.");
+      }
+
+      const resp = await fetch("/api/image/suggest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ imageUrl }),
+      });
+
+      const out = await resp.json();
+
+      if (!resp.ok) {
+        throw new Error(out?.error ?? "Image suggestion failed");
+      }
+
+      const s = out?.suggestion;
+      if (!s) {
+        throw new Error("No suggestion returned");
+      }
+
+      if (s.brand) setBrand(s.brand);
+      if (s.itemName) setItemName(s.itemName);
+      if (s.category) setCategory(s.category);
+      if (s.sizeHint && !size) setSize(s.sizeHint);
+      if (s.searchQuery) setSearchQuery(s.searchQuery);
+    } catch (err: any) {
+      setError(err?.message ?? "Could not suggest from image");
+    } finally {
+      setSuggesting(false);
+    }
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -78,7 +143,7 @@ export default function AddPage() {
 
       router.push("/dashboard");
     } catch (err: any) {
-      setError(err.message ?? "Something went wrong");
+      setError(err?.message ?? "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -97,6 +162,8 @@ export default function AddPage() {
             onChange={(e) => {
               const file = e.target.files?.[0] ?? null;
               setImageFile(file);
+              setUploadedImageUrl(null);
+              setError(null);
 
               if (imagePreviewUrl) {
                 URL.revokeObjectURL(imagePreviewUrl);
@@ -127,6 +194,17 @@ export default function AddPage() {
               }}
             />
           </div>
+        ) : null}
+
+        {imagePreviewUrl ? (
+          <button
+            type="button"
+            onClick={suggestFromImage}
+            disabled={suggesting}
+            style={{ padding: 10, fontWeight: 800 }}
+          >
+            {suggesting ? "Suggesting..." : "Suggest from image"}
+          </button>
         ) : null}
 
         <label style={{ display: "grid", gap: 6 }}>
