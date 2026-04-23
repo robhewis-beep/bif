@@ -75,6 +75,28 @@ async function getEbayAppToken(): Promise<string> {
   return json.access_token;
 }
 
+function mapEbayItems(items: any[]): Listing[] {
+  return items
+    .map((it: any) => {
+      const img =
+        it.image?.imageUrl ??
+        it.thumbnailImages?.[0]?.imageUrl ??
+        it.additionalImages?.[0]?.imageUrl ??
+        null;
+
+      return {
+        platform: "ebay" as const,
+        title: cleanEbayTitle((it.title ?? it.itemTitle ?? "eBay listing").toString()),
+        url: (it.itemWebUrl ?? "").toString(),
+        image_url: img ? String(img) : null,
+        price_value: it.price?.value != null ? Number(it.price.value) : null,
+        price_currency: it.price?.currency != null ? String(it.price.currency) : null,
+        item_condition: it.condition != null ? String(it.condition) : null,
+      };
+    })
+    .filter((x: Listing) => x.url?.includes("/itm/"));
+}
+
 async function ebaySearch(query: string): Promise<Listing[]> {
   const token = await getEbayAppToken();
 
@@ -98,27 +120,68 @@ async function ebaySearch(query: string): Promise<Listing[]> {
   }
 
   const data = await resp.json();
-  const items = data.itemSummaries ?? [];
+  return mapEbayItems(data.itemSummaries ?? []);
+}
 
-  return items
-    .map((it: any) => {
-      const img =
-        it.image?.imageUrl ??
-        it.thumbnailImages?.[0]?.imageUrl ??
-        it.additionalImages?.[0]?.imageUrl ??
-        null;
+async function imageUrlToBase64(imageUrl: string): Promise<string> {
+  const resp = await fetch(imageUrl);
+  if (!resp.ok) {
+    throw new Error(`Could not fetch reference image: ${resp.status}`);
+  }
 
-      return {
-        platform: "ebay" as const,
-        title: cleanEbayTitle((it.title ?? it.itemTitle ?? "eBay listing").toString()),
-        url: (it.itemWebUrl ?? "").toString(),
-        image_url: img ? String(img) : null,
-        price_value: it.price?.value != null ? Number(it.price.value) : null,
-        price_currency: it.price?.currency != null ? String(it.price.currency) : null,
-        item_condition: it.condition != null ? String(it.condition) : null,
-      };
-    })
-    .filter((x: Listing) => x.url?.includes("/itm/"));
+  const arrayBuffer = await resp.arrayBuffer();
+  return Buffer.from(arrayBuffer).toString("base64");
+}
+
+async function ebaySearchByImage(imageUrl: string): Promise<Listing[]> {
+  const token = await getEbayAppToken();
+  const imageBase64 = await imageUrlToBase64(imageUrl);
+
+  const resp = await fetch("https://api.ebay.com/buy/browse/v1/item_summary/search_by_image", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-EBAY-C-MARKETPLACE-ID": "EBAY_GB",
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      image: imageBase64,
+    }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`eBay image search error: ${resp.status} ${text}`);
+  }
+
+  const data = await resp.json();
+  return mapEbayItems(data.itemSummaries ?? data.itemSummariesResults ?? []);
+}
+
+function mergeListings(primary: Listing[], secondary: Listing[]) {
+  const map = new Map<string, Listing>();
+
+  for (const item of [...primary, ...secondary]) {
+    if (!item.url) continue;
+
+    if (!map.has(item.url)) {
+      map.set(item.url, item);
+      continue;
+    }
+
+    const existing = map.get(item.url)!;
+    map.set(item.url, {
+      ...existing,
+      title: existing.title || item.title,
+      image_url: existing.image_url ?? item.image_url ?? null,
+      price_value: existing.price_value ?? item.price_value ?? null,
+      price_currency: existing.price_currency ?? item.price_currency ?? null,
+      item_condition: existing.item_condition ?? item.item_condition ?? null,
+    });
+  }
+
+  return Array.from(map.values()).slice(0, 20);
 }
 
 async function ebayGetByLegacyId(
@@ -173,7 +236,9 @@ export async function runSearchEngine(userId?: string) {
 
   let trackedQuery = supabase
     .from("tracked_items")
-    .select("id, user_id, brand, item_name, currency, is_paused, is_active")
+    .select(
+      "id, user_id, brand, item_name, category, size, search_query, reference_image_url, image_only_search, currency, is_paused, is_active"
+    )
     .eq("is_active", true)
     .eq("is_paused", false);
 
@@ -198,15 +263,33 @@ export async function runSearchEngine(userId?: string) {
   for (const item of tracked) {
     searched += 1;
 
-    const searchQuery = `${item.brand} ${item.item_name}`.trim();
+    const textQuery =
+      item.search_query?.trim() ||
+      `${item.brand ?? ""} ${item.item_name ?? ""} ${item.size ?? ""}`.trim();
 
-    let listings: Listing[] = [];
-    try {
-      listings = await ebaySearch(searchQuery);
-    } catch (err) {
-      console.error("[runSearchEngine] ebaySearch failed for", searchQuery, err);
-      continue;
+    let textListings: Listing[] = [];
+    let imageListings: Listing[] = [];
+
+    if (!item.image_only_search && textQuery) {
+      try {
+        textListings = await ebaySearch(textQuery);
+      } catch (err) {
+        console.error("[runSearchEngine] ebaySearch failed for", textQuery, err);
+      }
     }
+
+    if (item.reference_image_url) {
+      try {
+        imageListings = await ebaySearchByImage(item.reference_image_url);
+      } catch (err) {
+        console.error("[runSearchEngine] ebaySearchByImage failed for", item.reference_image_url, err);
+      }
+    }
+
+    let listings =
+      item.image_only_search
+        ? imageListings
+        : mergeListings(textListings, imageListings);
 
     let enriched = 0;
     for (const l of listings) {
@@ -257,7 +340,7 @@ export async function runSearchEngine(userId?: string) {
     });
 
     if (upsertError) {
-      console.error("[runSearchEngine] upsert failed for", searchQuery, upsertError);
+      console.error("[runSearchEngine] upsert failed for", textQuery, upsertError);
       continue;
     }
 
