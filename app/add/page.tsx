@@ -11,10 +11,11 @@ export default function AddPage() {
   const [itemName, setItemName] = useState("");
   const [category, setCategory] = useState("jacket");
   const [size, setSize] = useState("");
-  const [maxPrice, setMaxPrice] = useState<number>(100);
+  const [maxPrice, setMaxPrice] = useState<number | "">(100);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFrequency, setSearchFrequency] = useState<"daily" | "weekly">("daily");
   const [isPaused, setIsPaused] = useState(false);
+  const [imageOnlySearch, setImageOnlySearch] = useState(false);
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -26,8 +27,6 @@ export default function AddPage() {
 
   async function uploadReferenceImage(userId: string) {
     if (!imageFile) return null;
-
-    // Reuse already-uploaded image if we have one
     if (uploadedImageUrl) return uploadedImageUrl;
 
     const ext = imageFile.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -85,7 +84,14 @@ export default function AddPage() {
         body: JSON.stringify({ imageUrl }),
       });
 
-      const out = await resp.json();
+      const text = await resp.text();
+
+      let out: any;
+      try {
+        out = JSON.parse(text);
+      } catch {
+        throw new Error(`Image suggest route returned non-JSON: ${text.slice(0, 120)}`);
+      }
 
       if (!resp.ok) {
         throw new Error(out?.error ?? "Image suggestion failed");
@@ -124,19 +130,35 @@ export default function AddPage() {
 
       const referenceImageUrl = await uploadReferenceImage(user.id);
 
+      const hasAnyText =
+        brand.trim() ||
+        itemName.trim() ||
+        category.trim() ||
+        size.trim() ||
+        searchQuery.trim();
+
+      if (!hasAnyText && !referenceImageUrl) {
+        throw new Error("Please provide either some search details or a reference image.");
+      }
+
+      if (imageOnlySearch && !referenceImageUrl) {
+        throw new Error("Image only search requires a reference image.");
+      }
+
       const { error } = await supabase.from("tracked_items").insert({
         user_id: user.id,
-        brand,
-        item_name: itemName,
-        category,
-        size,
-        search_query: searchQuery || null,
-        max_price: maxPrice ? Number(maxPrice) : null,
+        brand: brand.trim() || null,
+        item_name: itemName.trim() || null,
+        category: category.trim() || null,
+        size: size.trim() || null,
+        search_query: searchQuery.trim() || null,
+        max_price: maxPrice === "" ? null : Number(maxPrice),
         search_frequency: searchFrequency,
         is_paused: isPaused,
         currency: "GBP",
         is_active: true,
         reference_image_url: referenceImageUrl,
+        image_only_search: imageOnlySearch,
       });
 
       if (error) throw error;
@@ -174,6 +196,7 @@ export default function AddPage() {
                 setImagePreviewUrl(url);
               } else {
                 setImagePreviewUrl(null);
+                setImageOnlySearch(false);
               }
             }}
           />
@@ -197,70 +220,84 @@ export default function AddPage() {
         ) : null}
 
         {imagePreviewUrl ? (
-          <button
-            type="button"
-            onClick={suggestFromImage}
-            disabled={suggesting}
-            style={{ padding: 10, fontWeight: 800 }}
-          >
-            {suggesting ? "Suggesting..." : "Suggest from image"}
-          </button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={suggestFromImage}
+              disabled={suggesting}
+              style={{ padding: 10, fontWeight: 800 }}
+            >
+              {suggesting ? "Suggesting..." : "Suggest from image"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setImageOnlySearch((v) => !v)}
+              style={{
+                padding: 10,
+                fontWeight: 800,
+                borderRadius: 8,
+                border: "1px solid #ddd",
+                background: imageOnlySearch ? "#111" : "#fff",
+                color: imageOnlySearch ? "#fff" : "#111",
+              }}
+            >
+              {imageOnlySearch ? "Image only search: ON" : "Image only search: OFF"}
+            </button>
+          </div>
         ) : null}
 
         <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Brand</span>
+          <span style={{ fontWeight: 700 }}>Brand (optional)</span>
           <input
             style={{ padding: 10 }}
             placeholder="Brand"
             value={brand}
             onChange={(e) => setBrand(e.target.value)}
-            required
           />
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Item name / keywords</span>
+          <span style={{ fontWeight: 700 }}>Item name / keywords (optional)</span>
           <input
             style={{ padding: 10 }}
             placeholder="Item name / keywords"
             value={itemName}
             onChange={(e) => setItemName(e.target.value)}
-            required
           />
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Category</span>
+          <span style={{ fontWeight: 700 }}>Category (optional)</span>
           <input
             style={{ padding: 10 }}
             placeholder="Category (e.g. jacket)"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            required
           />
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Size</span>
+          <span style={{ fontWeight: 700 }}>Size (optional)</span>
           <input
             style={{ padding: 10 }}
             placeholder="Size (e.g. M, 32, UK 9)"
             value={size}
             onChange={(e) => setSize(e.target.value)}
-            required
           />
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Max price</span>
+          <span style={{ fontWeight: 700 }}>Max price (optional)</span>
           <input
             style={{ padding: 10 }}
             type="number"
             min={1}
             step="1"
             value={maxPrice}
-            onChange={(e) => setMaxPrice(Number(e.target.value))}
-            required
+            onChange={(e) =>
+              setMaxPrice(e.target.value === "" ? "" : Number(e.target.value))
+            }
           />
         </label>
 
@@ -273,7 +310,7 @@ export default function AddPage() {
             style={{ padding: 10, borderRadius: 10 }}
           />
           <span style={{ opacity: 0.7, fontSize: 12 }}>
-            Leave blank to auto-build from brand + item name + size.
+            Leave blank to auto-build from available details, or use image-only search.
           </span>
         </label>
 
