@@ -16,6 +16,7 @@ export default function AddPage() {
   const [searchFrequency, setSearchFrequency] = useState<"daily" | "weekly">("daily");
   const [isPaused, setIsPaused] = useState(false);
   const [imageOnlySearch, setImageOnlySearch] = useState(false);
+  const [suggestionStatus, setSuggestionStatus] = useState<string | null>(null);
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -24,6 +25,15 @@ export default function AddPage() {
   const [suggesting, setSuggesting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const buttonStyle: React.CSSProperties = {
+    padding: "8px 12px",
+    borderRadius: 10,
+    border: "1px solid #ddd",
+    fontWeight: 800,
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+  };
 
   async function uploadReferenceImage(userId: string) {
     if (!imageFile) return null;
@@ -39,17 +49,12 @@ export default function AddPage() {
         upsert: false,
       });
 
-    if (uploadError) {
-      throw new Error(`Image upload failed: ${uploadError.message}`);
-    }
+    if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
-    const { data } = supabase.storage
-      .from("tracked-item-images")
-      .getPublicUrl(filePath);
+    const { data } = supabase.storage.from("tracked-item-images").getPublicUrl(filePath);
 
-    const publicUrl = data.publicUrl;
-    setUploadedImageUrl(publicUrl);
-    return publicUrl;
+    setUploadedImageUrl(data.publicUrl);
+    return data.publicUrl;
   }
 
   async function suggestFromImage() {
@@ -60,6 +65,7 @@ export default function AddPage() {
 
     setSuggesting(true);
     setError(null);
+    setSuggestionStatus(null);
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -71,16 +77,11 @@ export default function AddPage() {
       }
 
       const imageUrl = await uploadReferenceImage(user.id);
-
-      if (!imageUrl) {
-        throw new Error("Could not upload image for analysis.");
-      }
+      if (!imageUrl) throw new Error("Could not upload image for analysis.");
 
       const resp = await fetch("/api/image/suggest", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageUrl }),
       });
 
@@ -93,21 +94,31 @@ export default function AddPage() {
         throw new Error(`Image suggest route returned non-JSON: ${text.slice(0, 120)}`);
       }
 
-      if (!resp.ok) {
-        throw new Error(out?.error ?? "Image suggestion failed");
-      }
+      if (!resp.ok) throw new Error(out?.error ?? "Image suggestion failed");
 
       const s = out?.suggestion;
-      if (!s) {
-        throw new Error("No suggestion returned");
-      }
+      if (!s) throw new Error("No suggestion returned");
 
       if (s.brand) setBrand(s.brand);
       if (s.itemName) setItemName(s.itemName);
       if (s.category) setCategory(s.category);
       if (s.sizeHint && !size) setSize(s.sizeHint);
       if (s.searchQuery) setSearchQuery(s.searchQuery);
+      const filledCount = [
+  s.brand,
+  s.itemName,
+  s.category,
+  s.sizeHint,
+  s.searchQuery,
+].filter(Boolean).length;
+
+setSuggestionStatus(
+  filledCount > 0
+    ? "Suggestions added from image. Please check and edit before saving."
+    : "No strong suggestions found from this image."
+);
     } catch (err: any) {
+      setSuggestionStatus(null);
       setError(err?.message ?? "Could not suggest from image");
     } finally {
       setSuggesting(false);
@@ -186,14 +197,12 @@ export default function AddPage() {
               setImageFile(file);
               setUploadedImageUrl(null);
               setError(null);
+              setSuggestionStatus(null);
 
-              if (imagePreviewUrl) {
-                URL.revokeObjectURL(imagePreviewUrl);
-              }
+              if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
 
               if (file) {
-                const url = URL.createObjectURL(file);
-                setImagePreviewUrl(url);
+                setImagePreviewUrl(URL.createObjectURL(file));
               } else {
                 setImagePreviewUrl(null);
                 setImageOnlySearch(false);
@@ -203,88 +212,65 @@ export default function AddPage() {
         </label>
 
         {imagePreviewUrl ? (
-          <div>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Preview</div>
-            <img
-              src={imagePreviewUrl}
-              alt="Reference preview"
-              style={{
-                width: 160,
-                height: 160,
-                objectFit: "cover",
-                borderRadius: 12,
-                border: "1px solid #ddd",
-              }}
-            />
-          </div>
-        ) : null}
+          <>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Preview</div>
+              <img
+                src={imagePreviewUrl}
+                alt="Reference preview"
+                style={{
+                  width: 160,
+                  height: 160,
+                  objectFit: "cover",
+                  borderRadius: 12,
+                  border: "1px solid #ddd",
+                }}
+              />
+            </div>
 
-        {imagePreviewUrl ? (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={suggestFromImage}
-              disabled={suggesting}
-              style={{ padding: 10, fontWeight: 800 }}
-            >
-              {suggesting ? "Suggesting..." : "Suggest from image"}
-            </button>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={suggestFromImage}
+                disabled={suggesting}
+                style={{ ...buttonStyle, opacity: suggesting ? 0.6 : 1 }}
+              >
+                {suggesting ? "Suggesting..." : "Suggest from image"}
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setImageOnlySearch((v) => !v)}
-              style={{
-                padding: 10,
-                fontWeight: 800,
-                borderRadius: 8,
-                border: "1px solid #ddd",
-                background: imageOnlySearch ? "#111" : "#fff",
-                color: imageOnlySearch ? "#fff" : "#111",
-              }}
-            >
-              {imageOnlySearch ? "Image only search: ON" : "Image only search: OFF"}
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => setImageOnlySearch((v) => !v)}
+                style={{
+                  ...buttonStyle,
+                  background: imageOnlySearch ? "#111" : "#fff",
+                  color: imageOnlySearch ? "#fff" : "#111",
+                }}
+              >
+                {imageOnlySearch ? "Image only search: ON" : "Image only search: OFF"}
+              </button>
+            </div>
+          </>
         ) : null}
 
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 700 }}>Brand (optional)</span>
-          <input
-            style={{ padding: 10 }}
-            placeholder="Brand"
-            value={brand}
-            onChange={(e) => setBrand(e.target.value)}
-          />
+          <input style={{ padding: 10 }} placeholder="Brand" value={brand} onChange={(e) => setBrand(e.target.value)} />
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 700 }}>Item name / keywords (optional)</span>
-          <input
-            style={{ padding: 10 }}
-            placeholder="Item name / keywords"
-            value={itemName}
-            onChange={(e) => setItemName(e.target.value)}
-          />
+          <input style={{ padding: 10 }} placeholder="Item name / keywords" value={itemName} onChange={(e) => setItemName(e.target.value)} />
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 700 }}>Category (optional)</span>
-          <input
-            style={{ padding: 10 }}
-            placeholder="Category (e.g. jacket)"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          />
+          <input style={{ padding: 10 }} placeholder="Category (e.g. jacket)" value={category} onChange={(e) => setCategory(e.target.value)} />
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontWeight: 700 }}>Size (optional)</span>
-          <input
-            style={{ padding: 10 }}
-            placeholder="Size (e.g. M, 32, UK 9)"
-            value={size}
-            onChange={(e) => setSize(e.target.value)}
-          />
+          <input style={{ padding: 10 }} placeholder="Size (e.g. M, 32, UK 9)" value={size} onChange={(e) => setSize(e.target.value)} />
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
@@ -295,9 +281,7 @@ export default function AddPage() {
             min={1}
             step="1"
             value={maxPrice}
-            onChange={(e) =>
-              setMaxPrice(e.target.value === "" ? "" : Number(e.target.value))
-            }
+            onChange={(e) => setMaxPrice(e.target.value === "" ? "" : Number(e.target.value))}
           />
         </label>
 
@@ -327,17 +311,29 @@ export default function AddPage() {
         </label>
 
         <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={isPaused}
-            onChange={(e) => setIsPaused(e.target.checked)}
-          />
+          <input type="checkbox" checked={isPaused} onChange={(e) => setIsPaused(e.target.checked)} />
           <span style={{ fontWeight: 700 }}>Pause this search</span>
         </label>
 
         {error ? <div style={{ color: "crimson" }}>{error}</div> : null}
+        {suggestionStatus ? (
+  <div
+    style={{
+      border: "1px solid #ddd",
+      borderRadius: 10,
+      padding: 10,
+      fontWeight: 700,
+      background: "#f7f7f7",
+    }}
+  >
+    {suggestionStatus}
+  </div>
+) : null}
 
-        <button style={{ padding: 10, fontWeight: 800 }} disabled={loading}>
+        <button
+          style={{ ...buttonStyle, padding: 10, opacity: loading ? 0.6 : 1 }}
+          disabled={loading}
+        >
           {loading ? "Saving..." : "Save tracked item"}
         </button>
       </form>
