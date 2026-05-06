@@ -1,13 +1,29 @@
 import { createClient } from "@supabase/supabase-js";
 
+type Platform = "ebay" | "vinted" | "depop";
+
 type Listing = {
-  platform: "ebay";
+  platform: Platform;
   title: string;
   url: string;
-  image_url?: string | null;
-  price_value?: number | null;
-  price_currency?: string | null;
-  item_condition?: string | null;
+  image_url: string | null;
+  price_value: number | null;
+  price_currency: string | null;
+  item_condition: string | null;
+};
+
+type TrackedItem = {
+  id: string;
+  user_id: string;
+  brand: string | null;
+  item_name: string | null;
+  category: string | null;
+  size: string | null;
+  search_query: string | null;
+  reference_image_url: string | null;
+  image_only_search: boolean | null;
+  platforms: string[] | null;
+  currency: string | null;
 };
 
 function getEnv(name: string) {
@@ -159,10 +175,10 @@ async function ebaySearchByImage(imageUrl: string): Promise<Listing[]> {
   return mapEbayItems(data.itemSummaries ?? data.itemSummariesResults ?? []);
 }
 
-function mergeListings(primary: Listing[], secondary: Listing[]) {
+function dedupeListings(listings: Listing[]) {
   const map = new Map<string, Listing>();
 
-  for (const item of [...primary, ...secondary]) {
+  for (const item of listings) {
     if (!item.url) continue;
 
     if (!map.has(item.url)) {
@@ -182,6 +198,52 @@ function mergeListings(primary: Listing[], secondary: Listing[]) {
   }
 
   return Array.from(map.values()).slice(0, 20);
+}
+
+async function searchEbayPlatform(item: TrackedItem): Promise<Listing[]> {
+  const textQuery =
+    item.search_query?.trim() ||
+    `${item.brand ?? ""} ${item.item_name ?? ""} ${item.size ?? ""}`.trim();
+
+  let textListings: Listing[] = [];
+  let imageListings: Listing[] = [];
+
+  if (!item.image_only_search && textQuery) {
+    try {
+      textListings = await ebaySearch(textQuery);
+    } catch (err) {
+      console.error("[runSearchEngine] ebaySearch failed for", textQuery, err);
+    }
+  }
+
+  if (item.reference_image_url) {
+    try {
+      imageListings = await ebaySearchByImage(item.reference_image_url);
+    } catch (err) {
+      console.error("[runSearchEngine] ebaySearchByImage failed for", item.reference_image_url, err);
+    }
+  }
+
+  return item.image_only_search ? imageListings : dedupeListings([...textListings, ...imageListings]);
+}
+
+async function searchAllPlatforms(item: TrackedItem): Promise<Listing[]> {
+  const results: Listing[] = [];
+  const platforms = item.platforms?.length ? item.platforms : ["ebay"];
+
+  if (platforms.includes("ebay")) {
+    results.push(...(await searchEbayPlatform(item)));
+  }
+
+  if (platforms.includes("vinted")) {
+    console.log("[runSearchEngine] Vinted selected but not implemented yet");
+  }
+
+  if (platforms.includes("depop")) {
+    console.log("[runSearchEngine] Depop selected but not implemented yet");
+  }
+
+  return dedupeListings(results);
 }
 
 async function ebayGetByLegacyId(
@@ -231,14 +293,49 @@ async function ebayGetByLegacyId(
   };
 }
 
+async function enrichListings(listings: Listing[]) {
+  let enriched = 0;
+
+  for (const l of listings) {
+    if (l.platform !== "ebay") continue;
+
+    const needsTitle = !l.title || l.title === "eBay listing";
+    const needsImage = !l.image_url;
+    const needsPrice = l.price_value == null || !l.price_currency;
+    const needsCondition = !l.item_condition;
+
+    if (!(needsTitle || needsImage || needsPrice || needsCondition)) continue;
+
+    const legacyId = legacyIdFromEbayUrl(l.url);
+    if (!legacyId) continue;
+
+    try {
+      const extra = await ebayGetByLegacyId(legacyId);
+
+      if (needsTitle && extra.title) l.title = extra.title;
+      if (needsImage && extra.image) l.image_url = extra.image;
+      if (needsPrice && extra.price_value != null) l.price_value = extra.price_value;
+      if (needsPrice && extra.price_currency) l.price_currency = extra.price_currency;
+      if (needsCondition && extra.item_condition) l.item_condition = extra.item_condition;
+    } catch (err) {
+      console.error("[runSearchEngine] ebayGetByLegacyId failed for", legacyId, err);
+    }
+
+    enriched += 1;
+    if (enriched >= 3) break;
+  }
+
+  return listings;
+}
+
 export async function runSearchEngine(userId?: string) {
   const supabase = getSupabaseAdmin();
 
   let trackedQuery = supabase
     .from("tracked_items")
     .select(
-      "id, user_id, brand, item_name, category, size, search_query, reference_image_url, image_only_search, currency, is_paused, is_active"
-    )
+  "id, user_id, brand, item_name, category, size, search_query, reference_image_url, image_only_search, platforms, currency, is_paused, is_active"
+)
     .eq("is_active", true)
     .eq("is_paused", false);
 
@@ -260,64 +357,11 @@ export async function runSearchEngine(userId?: string) {
   let upserted = 0;
   const usersToEmail = new Set<string>();
 
-  for (const item of tracked) {
+  for (const item of tracked as TrackedItem[]) {
     searched += 1;
 
-    const textQuery =
-      item.search_query?.trim() ||
-      `${item.brand ?? ""} ${item.item_name ?? ""} ${item.size ?? ""}`.trim();
-
-    let textListings: Listing[] = [];
-    let imageListings: Listing[] = [];
-
-    if (!item.image_only_search && textQuery) {
-      try {
-        textListings = await ebaySearch(textQuery);
-      } catch (err) {
-        console.error("[runSearchEngine] ebaySearch failed for", textQuery, err);
-      }
-    }
-
-    if (item.reference_image_url) {
-      try {
-        imageListings = await ebaySearchByImage(item.reference_image_url);
-      } catch (err) {
-        console.error("[runSearchEngine] ebaySearchByImage failed for", item.reference_image_url, err);
-      }
-    }
-
-    let listings =
-      item.image_only_search
-        ? imageListings
-        : mergeListings(textListings, imageListings);
-
-    let enriched = 0;
-    for (const l of listings) {
-      const needsTitle = !l.title || l.title === "eBay listing";
-      const needsImage = !l.image_url;
-      const needsPrice = l.price_value == null || !l.price_currency;
-      const needsCondition = !l.item_condition;
-
-      if (!(needsTitle || needsImage || needsPrice || needsCondition)) continue;
-
-      const legacyId = legacyIdFromEbayUrl(l.url);
-      if (!legacyId) continue;
-
-      try {
-        const extra = await ebayGetByLegacyId(legacyId);
-
-        if (needsTitle && extra.title) l.title = extra.title;
-        if (needsImage && extra.image) l.image_url = extra.image;
-        if (needsPrice && extra.price_value != null) l.price_value = extra.price_value;
-        if (needsPrice && extra.price_currency) l.price_currency = extra.price_currency;
-        if (needsCondition && extra.item_condition) l.item_condition = extra.item_condition;
-      } catch (err) {
-        console.error("[runSearchEngine] ebayGetByLegacyId failed for", legacyId, err);
-      }
-
-      enriched += 1;
-      if (enriched >= 3) break;
-    }
+    let listings = await searchAllPlatforms(item);
+    listings = await enrichListings(listings);
 
     if (!listings.length) continue;
 
@@ -340,7 +384,7 @@ export async function runSearchEngine(userId?: string) {
     });
 
     if (upsertError) {
-      console.error("[runSearchEngine] upsert failed for", textQuery, upsertError);
+      console.error("[runSearchEngine] upsert failed for item", item.id, upsertError);
       continue;
     }
 
@@ -353,7 +397,6 @@ export async function runSearchEngine(userId?: string) {
       .from("found_listings")
       .select("id, listing_url")
       .eq("user_id", item.user_id)
-      .eq("platform", "ebay")
       .in("listing_url", urls);
 
     if (!fetchErr && insertedOrExisting?.length) {
