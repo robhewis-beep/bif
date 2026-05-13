@@ -107,7 +107,22 @@ export default function FoundPage() {
       return;
     }
 
-    setRows((data ?? []) as FoundRow[]);
+    const mappedRows: FoundRow[] = (data ?? []).map((row: any) => ({
+  id: row.id,
+  platform: row.platform,
+  title: row.title,
+  listing_url: row.listing_url,
+  image_url: row.image_url ?? null,
+  matched_at: row.matched_at,
+  price_value: row.price_value ?? null,
+  price_currency: row.price_currency ?? null,
+  item_condition: row.item_condition ?? null,
+  tracked_item: Array.isArray(row.tracked_item)
+    ? row.tracked_item[0] ?? null
+    : row.tracked_item ?? null,
+}));
+
+setRows(mappedRows);
     setLoading(false);
 
     await supabase
