@@ -4,15 +4,47 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
+const CATEGORIES = [
+  "Fleece",
+  "Jacket",
+  "Coat",
+  "Shirt",
+  "T-Shirt",
+  "Jumper / Knitwear",
+  "Hoodie / Sweatshirt",
+  "Trousers",
+  "Jeans",
+  "Shorts",
+  "Dress",
+  "Skirt",
+  "Boots",
+  "Trainers / Sneakers",
+  "Shoes",
+  "Sandals",
+  "Bag",
+  "Belt",
+  "Hat / Cap",
+  "Scarf / Gloves",
+  "Jewellery",
+  "Watch",
+  "Sunglasses",
+  "Other",
+];
+
+const CONDITIONS = ["Any", "New", "Used - Excellent", "Used - Good", "Used - Fair"];
+const GENDERS = ["Unisex", "Men", "Women", "Boys", "Girls"];
+
 export default function AddPage() {
   const router = useRouter();
 
   const [brand, setBrand] = useState("");
-  const [itemName, setItemName] = useState("");
-  const [category, setCategory] = useState("jacket");
+  const [category, setCategory] = useState("Fleece");
+  const [keywords, setKeywords] = useState("");
+  const [gender, setGender] = useState("Unisex");
   const [size, setSize] = useState("");
+  const [color, setColor] = useState("");
+  const [condition, setCondition] = useState("Any");
   const [maxPrice, setMaxPrice] = useState<number | "">(100);
-  const [searchQuery, setSearchQuery] = useState("");
   const [searchFrequency, setSearchFrequency] = useState<"daily" | "weekly">("daily");
   const [isPaused, setIsPaused] = useState(false);
   const [imageOnlySearch, setImageOnlySearch] = useState(false);
@@ -25,6 +57,20 @@ export default function AddPage() {
   const [suggesting, setSuggesting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const inputStyle: React.CSSProperties = {
+    padding: 10,
+    borderRadius: 8,
+    border: "1px solid #ddd",
+    fontSize: 14,
+    width: "100%",
+    boxSizing: "border-box",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "grid",
+    gap: 6,
+  };
 
   const buttonStyle: React.CSSProperties = {
     padding: "8px 12px",
@@ -44,15 +90,11 @@ export default function AddPage() {
 
     const { error: uploadError } = await supabase.storage
       .from("tracked-item-images")
-      .upload(filePath, imageFile, {
-        cacheControl: "3600",
-        upsert: false,
-      });
+      .upload(filePath, imageFile, { cacheControl: "3600", upsert: false });
 
     if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
 
     const { data } = supabase.storage.from("tracked-item-images").getPublicUrl(filePath);
-
     setUploadedImageUrl(data.publicUrl);
     return data.publicUrl;
   }
@@ -70,11 +112,7 @@ export default function AddPage() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const user = sessionData.session?.user;
-
-      if (!user) {
-        router.push("/login");
-        return;
-      }
+      if (!user) { router.push("/login"); return; }
 
       const imageUrl = await uploadReferenceImage(user.id);
       if (!imageUrl) throw new Error("Could not upload image for analysis.");
@@ -86,11 +124,8 @@ export default function AddPage() {
       });
 
       const text = await resp.text();
-
       let out: any;
-      try {
-        out = JSON.parse(text);
-      } catch {
+      try { out = JSON.parse(text); } catch {
         throw new Error(`Image suggest route returned non-JSON: ${text.slice(0, 120)}`);
       }
 
@@ -100,29 +135,37 @@ export default function AddPage() {
       if (!s) throw new Error("No suggestion returned");
 
       if (s.brand) setBrand(s.brand);
-      if (s.itemName) setItemName(s.itemName);
-      if (s.category) setCategory(s.category);
-      if (s.sizeHint && !size) setSize(s.sizeHint);
-      if (s.searchQuery) setSearchQuery(s.searchQuery);
-      const filledCount = [
-  s.brand,
-  s.itemName,
-  s.category,
-  s.sizeHint,
-  s.searchQuery,
-].filter(Boolean).length;
+      if (s.category) {
+        const matched = CATEGORIES.find(
+          (c) => c.toLowerCase() === s.category.toLowerCase()
+        );
+        setCategory(matched ?? "Other");
+      }
+      if (s.searchQuery) setKeywords(s.searchQuery);
 
-setSuggestionStatus(
-  filledCount > 0
-    ? "Suggestions added from image. Please check and edit before saving."
-    : "No strong suggestions found from this image."
-);
+      const filledCount = [s.brand, s.category, s.searchQuery].filter(Boolean).length;
+      setSuggestionStatus(
+        filledCount > 0
+          ? "Suggestions added from image — please check and edit before saving."
+          : "No strong suggestions found from this image."
+      );
     } catch (err: any) {
       setSuggestionStatus(null);
       setError(err?.message ?? "Could not suggest from image");
     } finally {
       setSuggesting(false);
     }
+  }
+
+  function buildSearchQuery() {
+    const parts: string[] = [];
+    if (brand.trim()) parts.push(brand.trim());
+    if (category && category !== "Other") parts.push(category);
+    if (keywords.trim()) parts.push(keywords.trim());
+    if (gender && gender !== "Unisex") parts.push(gender);
+    if (size.trim()) parts.push(size.trim());
+    if (color.trim()) parts.push(color.trim());
+    return parts.join(" ").trim();
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -133,36 +176,29 @@ setSuggestionStatus(
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const user = sessionData.session?.user;
-
-      if (!user) {
-        router.push("/login");
-        return;
-      }
+      if (!user) { router.push("/login"); return; }
 
       const referenceImageUrl = await uploadReferenceImage(user.id);
 
-      const hasAnyText =
-        brand.trim() ||
-        itemName.trim() ||
-        category.trim() ||
-        size.trim() ||
-        searchQuery.trim();
-
+      const hasAnyText = brand.trim() || category || keywords.trim() || size.trim();
       if (!hasAnyText && !referenceImageUrl) {
         throw new Error("Please provide either some search details or a reference image.");
       }
-
       if (imageOnlySearch && !referenceImageUrl) {
         throw new Error("Image only search requires a reference image.");
       }
 
+      const autoQuery = buildSearchQuery();
+
       const { error } = await supabase.from("tracked_items").insert({
         user_id: user.id,
         brand: brand.trim() || null,
-        item_name: itemName.trim() || null,
-        category: category.trim() || null,
+        item_name: keywords.trim() || null,
+        category: category || null,
         size: size.trim() || null,
-        search_query: searchQuery.trim() || null,
+        color: color.trim() || null,
+        condition: condition !== "Any" ? condition : null,
+        search_query: autoQuery || null,
         max_price: maxPrice === "" ? null : Number(maxPrice),
         search_frequency: searchFrequency,
         is_paused: isPaused,
@@ -173,7 +209,6 @@ setSuggestionStatus(
       });
 
       if (error) throw error;
-
       router.push("/dashboard");
     } catch (err: any) {
       setError(err?.message ?? "Something went wrong");
@@ -182,12 +217,16 @@ setSuggestionStatus(
     }
   }
 
+  const previewQuery = buildSearchQuery();
+
   return (
     <main style={{ maxWidth: 640, margin: "40px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 26, fontWeight: 800 }}>Add item</h1>
+      <h1 style={{ fontSize: 26, fontWeight: 800 }}>Add tracked item</h1>
 
-      <form onSubmit={onSubmit} style={{ marginTop: 16, display: "grid", gap: 12 }}>
-        <label style={{ display: "grid", gap: 6 }}>
+      <form onSubmit={onSubmit} style={{ marginTop: 16, display: "grid", gap: 14 }}>
+
+        {/* IMAGE */}
+        <label style={labelStyle}>
           <span style={{ fontWeight: 700 }}>Reference image (optional)</span>
           <input
             type="file"
@@ -198,85 +237,101 @@ setSuggestionStatus(
               setUploadedImageUrl(null);
               setError(null);
               setSuggestionStatus(null);
-
               if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
-
-              if (file) {
-                setImagePreviewUrl(URL.createObjectURL(file));
-              } else {
-                setImagePreviewUrl(null);
-                setImageOnlySearch(false);
-              }
+              setImagePreviewUrl(file ? URL.createObjectURL(file) : null);
+              if (!file) setImageOnlySearch(false);
             }}
           />
         </label>
 
-        {imagePreviewUrl ? (
+        {imagePreviewUrl && (
           <>
             <div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Preview</div>
               <img
                 src={imagePreviewUrl}
                 alt="Reference preview"
-                style={{
-                  width: 160,
-                  height: 160,
-                  objectFit: "cover",
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                }}
+                style={{ width: 160, height: 160, objectFit: "cover", borderRadius: 12, border: "1px solid #ddd" }}
               />
             </div>
-
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={suggestFromImage}
-                disabled={suggesting}
-                style={{ ...buttonStyle, opacity: suggesting ? 0.6 : 1 }}
-              >
+              <button type="button" onClick={suggestFromImage} disabled={suggesting}
+                style={{ ...buttonStyle, opacity: suggesting ? 0.6 : 1 }}>
                 {suggesting ? "Suggesting..." : "Suggest from image"}
               </button>
-
-              <button
-                type="button"
-                onClick={() => setImageOnlySearch((v) => !v)}
-                style={{
-                  ...buttonStyle,
-                  background: imageOnlySearch ? "#111" : "#fff",
-                  color: imageOnlySearch ? "#fff" : "#111",
-                }}
-              >
-                {imageOnlySearch ? "Image only search: ON" : "Image only search: OFF"}
+              <button type="button" onClick={() => setImageOnlySearch((v) => !v)}
+                style={{ ...buttonStyle, background: imageOnlySearch ? "#111" : "#fff", color: imageOnlySearch ? "#fff" : "#111" }}>
+                {imageOnlySearch ? "Image only: ON" : "Image only: OFF"}
               </button>
             </div>
           </>
-        ) : null}
+        )}
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Brand (optional)</span>
-          <input style={{ padding: 10 }} placeholder="Brand" value={brand} onChange={(e) => setBrand(e.target.value)} />
+        {suggestionStatus && (
+          <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 10, fontWeight: 700, background: "#f7f7f7" }}>
+            {suggestionStatus}
+          </div>
+        )}
+
+        {/* BRAND */}
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 700 }}>Brand <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></span>
+          <input style={inputStyle} placeholder="e.g. Carhartt, Patagonia, Levi's" value={brand} onChange={(e) => setBrand(e.target.value)} />
         </label>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Item name / keywords (optional)</span>
-          <input style={{ padding: 10 }} placeholder="Item name / keywords" value={itemName} onChange={(e) => setItemName(e.target.value)} />
+        {/* CATEGORY */}
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 700 }}>Category</span>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
         </label>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Category (optional)</span>
-          <input style={{ padding: 10 }} placeholder="Category (e.g. jacket)" value={category} onChange={(e) => setCategory(e.target.value)} />
-        </label>
-
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Size (optional)</span>
-          <input style={{ padding: 10 }} placeholder="Size (e.g. M, 32, UK 9)" value={size} onChange={(e) => setSize(e.target.value)} />
-        </label>
-
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Max price (optional)</span>
+        {/* KEYWORDS */}
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 700 }}>Keywords <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></span>
           <input
-            style={{ padding: 10 }}
+            style={inputStyle}
+            placeholder="e.g. zip-up, vintage, oversized, corduroy, quilted"
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
+          />
+          <span style={{ opacity: 0.6, fontSize: 12 }}>Describe distinctive features that make this item unique</span>
+        </label>
+
+        {/* GENDER */}
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 700 }}>Gender</span>
+          <select value={gender} onChange={(e) => setGender(e.target.value)} style={inputStyle}>
+            {GENDERS.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </label>
+
+        {/* SIZE & COLOUR — side by side */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <label style={labelStyle}>
+            <span style={{ fontWeight: 700 }}>Size <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></span>
+            <input style={inputStyle} placeholder="e.g. M, 32, UK 9" value={size} onChange={(e) => setSize(e.target.value)} />
+          </label>
+          <label style={labelStyle}>
+            <span style={{ fontWeight: 700 }}>Colour <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></span>
+            <input style={inputStyle} placeholder="e.g. navy, olive, burgundy" value={color} onChange={(e) => setColor(e.target.value)} />
+          </label>
+        </div>
+
+        {/* CONDITION */}
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 700 }}>Condition</span>
+          <select value={condition} onChange={(e) => setCondition(e.target.value)} style={inputStyle}>
+            {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+
+        {/* MAX PRICE */}
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 700 }}>Max price in £ <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></span>
+          <input
+            style={inputStyle}
             type="number"
             min={1}
             step="1"
@@ -285,57 +340,29 @@ setSuggestionStatus(
           />
         </label>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 700 }}>Search query (optional)</span>
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder='e.g. "Carhartt Detroit jacket size M"'
-            style={{ padding: 10, borderRadius: 10 }}
-          />
-          <span style={{ opacity: 0.7, fontSize: 12 }}>
-            Leave blank to auto-build from available details, or use image-only search.
-          </span>
-        </label>
-
-        <label style={{ display: "grid", gap: 6 }}>
+        {/* SEARCH FREQUENCY */}
+        <label style={labelStyle}>
           <span style={{ fontWeight: 700 }}>Search frequency</span>
-          <select
-            value={searchFrequency}
-            onChange={(e) => setSearchFrequency(e.target.value as "daily" | "weekly")}
-            style={{ padding: 10, borderRadius: 10 }}
-          >
+          <select value={searchFrequency} onChange={(e) => setSearchFrequency(e.target.value as "daily" | "weekly")} style={inputStyle}>
             <option value="daily">Daily</option>
             <option value="weekly">Weekly</option>
           </select>
         </label>
 
-        <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <input type="checkbox" checked={isPaused} onChange={(e) => setIsPaused(e.target.checked)} />
-          <span style={{ fontWeight: 700 }}>Pause this search</span>
-        </label>
+        {/* SEARCH PREVIEW */}
+        {previewQuery && (
+          <div style={{ background: "#f7f7f7", border: "1px solid #ddd", borderRadius: 10, padding: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 12, opacity: 0.6, marginBottom: 4 }}>SEARCH PREVIEW</div>
+            <div style={{ fontWeight: 700 }}>{previewQuery}</div>
+          </div>
+        )}
 
-        {error ? <div style={{ color: "crimson" }}>{error}</div> : null}
-        {suggestionStatus ? (
-  <div
-    style={{
-      border: "1px solid #ddd",
-      borderRadius: 10,
-      padding: 10,
-      fontWeight: 700,
-      background: "#f7f7f7",
-    }}
-  >
-    {suggestionStatus}
-  </div>
-) : null}
+        {error && <div style={{ color: "crimson" }}>{error}</div>}
 
-        <button
-          style={{ ...buttonStyle, padding: 10, opacity: loading ? 0.6 : 1 }}
-          disabled={loading}
-        >
+        <button style={{ ...buttonStyle, padding: 12, opacity: loading ? 0.6 : 1, background: "#111", color: "#fff" }} disabled={loading}>
           {loading ? "Saving..." : "Save tracked item"}
         </button>
+
       </form>
     </main>
   );

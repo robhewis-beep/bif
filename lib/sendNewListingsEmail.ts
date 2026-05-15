@@ -35,15 +35,18 @@ export async function sendNewListingsEmail(params: {
   if (profile && profile.digest_opt_in === false) {
     return { sent: false as const };
   }
-
+  
   const lastSent = profile?.last_digest_sent_at
-    ? new Date(profile.last_digest_sent_at).getTime()
-    : 0;
-
+  ? new Date(profile.last_digest_sent_at).getTime()
+  : 0;
+  
   const now = Date.now();
-  if (lastSent && now - lastSent < 24 * 60 * 60 * 1000) {
-    return { sent: false as const };
-  }
+  const hoursSinceLastSent = lastSent ? (now - lastSent) / (1000 * 60 * 60) : Infinity;
+  
+  if (hoursSinceLastSent < 23) {
+  console.log(`[email] Skipping user ${userId} — last sent ${hoursSinceLastSent.toFixed(1)}h ago`);
+  return { sent: false as const };
+}
 
   const { data: userRes, error: userErr } =
     await supabaseAdmin.auth.admin.getUserById(userId);
