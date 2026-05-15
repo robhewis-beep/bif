@@ -201,10 +201,20 @@ function dedupeListings(listings: Listing[]) {
 }
 
 async function searchEbayPlatform(item: TrackedItem): Promise<Listing[]> {
-  const textQuery =
-    item.search_query?.trim() ||
-    `${item.brand ?? ""} ${item.item_name ?? ""} ${item.size ?? ""}`.trim();
+  const textQuery = (() => {
+  if (item.search_query?.trim()) return item.search_query.trim();
+  const parts: string[] = [];
+  if (item.brand) parts.push(item.brand);
+  if (item.category) parts.push(item.category);
+  if (item.item_name) parts.push(item.item_name);
+  if (item.size) parts.push(item.size);
+  return parts.join(" ").trim();
+})();
 
+if (!textQuery && !item.reference_image_url) {
+  console.log(`[runSearchEngine] Skipping item ${item.id} — no query and no image`);
+  return [];
+}
   let textListings: Listing[] = [];
   let imageListings: Listing[] = [];
 
