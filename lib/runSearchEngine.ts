@@ -19,6 +19,9 @@ type TrackedItem = {
   item_name: string | null;
   category: string | null;
   size: string | null;
+  color: string | null;
+  condition: string | null;
+  max_price: number | null;
   search_query: string | null;
   reference_image_url: string | null;
   image_only_search: boolean | null;
@@ -113,14 +116,67 @@ function mapEbayItems(items: any[]): Listing[] {
     .filter((x: Listing) => x.url?.includes("/itm/"));
 }
 
-async function ebaySearch(query: string): Promise<Listing[]> {
+// Detects gender intent from the search query
+function detectGender(item: TrackedItem): "women" | "men" | null {
+  const haystack = [
+    item.search_query,
+    item.item_name,
+    item.category,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (haystack.includes("women") || haystack.includes("ladies") || haystack.includes("female")) {
+    return "women";
+  }
+  if (haystack.includes("men") || haystack.includes("mens") || haystack.includes("male")) {
+    return "men";
+  }
+  return null;
+}
+
+async function ebaySearch(query: string, item?: TrackedItem): Promise<Listing[]> {
   const token = await getEbayAppToken();
 
-  const url =
+  // Build filters
+  const filters: string[] = ["buyingOptions:{FIXED_PRICE|AUCTION}"];
+
+  // Max price filter
+  if (item?.max_price) {
+    filters.push(`price:[0..${item.max_price}],priceCurrency:GBP`);
+  }
+
+  // Condition filter
+  if (item?.condition) {
+    if (item.condition === "New") {
+      filters.push("conditions:{NEW}");
+    } else if (item.condition?.startsWith("Used")) {
+      filters.push("conditions:{USED_EXCELLENT|USED_GOOD|USED_ACCEPTABLE}");
+    }
+  }
+
+  const filterString = filters.join(",");
+
+  // Build gender aspect filter — most reliable way to exclude wrong gender results
+  const aspectFilters: string[] = [];
+  const gender = item ? detectGender(item) : null;
+
+  if (gender === "women") {
+    aspectFilters.push("aspectFilter=categoryAspect:Department,aspectValueName:Women");
+  } else if (gender === "men") {
+    aspectFilters.push("aspectFilter=categoryAspect:Department,aspectValueName:Men");
+  }
+
+  let url =
     `https://api.ebay.com/buy/browse/v1/item_summary/search` +
     `?q=${encodeURIComponent(query)}` +
-    `&limit=10` +
-    `&filter=buyingOptions:{FIXED_PRICE|AUCTION}`;
+    `&limit=20` +
+    `&filter=${encodeURIComponent(filterString)}`;
+
+  if (aspectFilters.length > 0) {
+    url += `&${aspectFilters.join("&")}`;
+  }
 
   const resp = await fetch(url, {
     headers: {
@@ -144,7 +200,6 @@ async function imageUrlToBase64(imageUrl: string): Promise<string> {
   if (!resp.ok) {
     throw new Error(`Could not fetch reference image: ${resp.status}`);
   }
-
   const arrayBuffer = await resp.arrayBuffer();
   return Buffer.from(arrayBuffer).toString("base64");
 }
@@ -161,9 +216,7 @@ async function ebaySearchByImage(imageUrl: string): Promise<Listing[]> {
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      image: imageBase64,
-    }),
+    body: JSON.stringify({ image: imageBase64 }),
   });
 
   if (!resp.ok) {
@@ -201,26 +254,32 @@ function dedupeListings(listings: Listing[]) {
 }
 
 async function searchEbayPlatform(item: TrackedItem): Promise<Listing[]> {
+  // Build the best possible search query from available fields
   const textQuery = (() => {
-  if (item.search_query?.trim()) return item.search_query.trim();
-  const parts: string[] = [];
-  if (item.brand) parts.push(item.brand);
-  if (item.category) parts.push(item.category);
-  if (item.item_name) parts.push(item.item_name);
-  if (item.size) parts.push(item.size);
-  return parts.join(" ").trim();
-})();
+    if (item.search_query?.trim()) return item.search_query.trim();
+    const parts: string[] = [];
+    if (item.brand) parts.push(item.brand);
+    if (item.category) parts.push(item.category);
+    if (item.item_name) parts.push(item.item_name);
+    if (item.color) parts.push(item.color);
+    if (item.size) parts.push(item.size);
+    return parts.join(" ").trim();
+  })();
 
-if (!textQuery && !item.reference_image_url) {
-  console.log(`[runSearchEngine] Skipping item ${item.id} — no query and no image`);
-  return [];
-}
+  if (!textQuery && !item.reference_image_url) {
+    console.log(`[runSearchEngine] Skipping item ${item.id} — no query and no image`);
+    return [];
+  }
+
+  console.log(`[runSearchEngine] Searching for: "${textQuery}" (item ${item.id})`);
+
   let textListings: Listing[] = [];
   let imageListings: Listing[] = [];
 
   if (!item.image_only_search && textQuery) {
     try {
-      textListings = await ebaySearch(textQuery);
+      textListings = await ebaySearch(textQuery, item);
+      console.log(`[runSearchEngine] Text search returned ${textListings.length} results`);
     } catch (err) {
       console.error("[runSearchEngine] ebaySearch failed for", textQuery, err);
     }
@@ -229,12 +288,15 @@ if (!textQuery && !item.reference_image_url) {
   if (item.reference_image_url) {
     try {
       imageListings = await ebaySearchByImage(item.reference_image_url);
+      console.log(`[runSearchEngine] Image search returned ${imageListings.length} results`);
     } catch (err) {
       console.error("[runSearchEngine] ebaySearchByImage failed for", item.reference_image_url, err);
     }
   }
 
-  return item.image_only_search ? imageListings : dedupeListings([...textListings, ...imageListings]);
+  return item.image_only_search
+    ? imageListings
+    : dedupeListings([...textListings, ...imageListings]);
 }
 
 async function searchAllPlatforms(item: TrackedItem): Promise<Listing[]> {
@@ -256,9 +318,7 @@ async function searchAllPlatforms(item: TrackedItem): Promise<Listing[]> {
   return dedupeListings(results);
 }
 
-async function ebayGetByLegacyId(
-  legacyId: string
-): Promise<{
+async function ebayGetByLegacyId(legacyId: string): Promise<{
   title: string | null;
   image: string | null;
   price_value: number | null;
@@ -280,13 +340,7 @@ async function ebayGetByLegacyId(
   });
 
   if (!resp.ok) {
-    return {
-      title: null,
-      image: null,
-      price_value: null,
-      price_currency: null,
-      item_condition: null,
-    };
+    return { title: null, image: null, price_value: null, price_currency: null, item_condition: null };
   }
 
   const it = await resp.json();
@@ -321,7 +375,6 @@ async function enrichListings(listings: Listing[]) {
 
     try {
       const extra = await ebayGetByLegacyId(legacyId);
-
       if (needsTitle && extra.title) l.title = extra.title;
       if (needsImage && extra.image) l.image_url = extra.image;
       if (needsPrice && extra.price_value != null) l.price_value = extra.price_value;
@@ -344,8 +397,8 @@ export async function runSearchEngine(userId?: string) {
   let trackedQuery = supabase
     .from("tracked_items")
     .select(
-  "id, user_id, brand, item_name, category, size, search_query, reference_image_url, image_only_search, platforms, currency, is_paused, is_active"
-)
+      "id, user_id, brand, item_name, category, size, color, condition, max_price, search_query, reference_image_url, image_only_search, platforms, currency, is_paused, is_active"
+    )
     .eq("is_active", true)
     .eq("is_paused", false);
 
