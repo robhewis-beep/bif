@@ -135,13 +135,14 @@ export default function AddPage() {
       if (!s) throw new Error("No suggestion returned");
 
       if (s.brand) setBrand(s.brand);
-      if (s.category) {
-        const matched = CATEGORIES.find(
-          (c) => c.toLowerCase() === s.category.toLowerCase()
-        );
-        setCategory(matched ?? "Other");
-      }
-      if (s.searchQuery) setKeywords(s.searchQuery);
+if (s.category) {
+  const matched = CATEGORIES.find(
+    (c) => c.toLowerCase() === s.category.toLowerCase()
+  );
+  setCategory(matched ?? "Other");
+}
+if (s.keywords) setKeywords(s.keywords);
+if (s.color) setColor(s.color);
 
       const filledCount = [s.brand, s.category, s.searchQuery].filter(Boolean).length;
       setSuggestionStatus(
