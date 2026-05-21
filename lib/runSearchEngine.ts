@@ -216,7 +216,7 @@ async function ebaySearchByImage(imageUrl: string): Promise<Listing[]> {
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ image: imageBase64 }),
+    body: JSON.stringify({ image: imageBase64, limit: 50 }),
   });
 
   if (!resp.ok) {
@@ -335,13 +335,15 @@ async function searchEbayPlatform(item: TrackedItem): Promise<Listing[]> {
   }
 
   if (item.reference_image_url) {
-    try {
-      imageListings = await ebaySearchByImage(item.reference_image_url);
-      console.log(`[runSearchEngine] Image search returned ${imageListings.length} results`);
-    } catch (err) {
-      console.error("[runSearchEngine] ebaySearchByImage failed for", item.reference_image_url, err);
-    }
+  try {
+    const rawImageListings = await ebaySearchByImage(item.reference_image_url);
+    console.log(`[runSearchEngine] Image search returned ${rawImageListings.length} results`);
+    imageListings = filterListings(rawImageListings, item);
+    console.log(`[runSearchEngine] Image search after filtering: ${imageListings.length} results`);
+  } catch (err) {
+    console.error("[runSearchEngine] ebaySearchByImage failed for", item.reference_image_url, err);
   }
+}
 
   const combined = item.image_only_search
   ? imageListings
