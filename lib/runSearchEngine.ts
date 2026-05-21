@@ -171,7 +171,7 @@ async function ebaySearch(query: string, item?: TrackedItem): Promise<Listing[]>
   let url =
     `https://api.ebay.com/buy/browse/v1/item_summary/search` +
     `?q=${encodeURIComponent(query)}` +
-    `&limit=20` +
+    `&limit=50` +
     `&filter=${encodeURIComponent(filterString)}`;
 
   if (aspectFilters.length > 0) {
@@ -301,15 +301,19 @@ function filterListings(listings: Listing[], item: TrackedItem): Listing[] {
 async function searchEbayPlatform(item: TrackedItem): Promise<Listing[]> {
   // Build the best possible search query from available fields
   const textQuery = (() => {
-    if (item.search_query?.trim()) return item.search_query.trim();
-    const parts: string[] = [];
-    if (item.brand) parts.push(item.brand);
-    if (item.category) parts.push(item.category);
-    if (item.item_name) parts.push(item.item_name);
-    if (item.color) parts.push(item.color);
-    if (item.size) parts.push(item.size);
-    return parts.join(" ").trim();
-  })();
+  if (item.search_query?.trim()) return item.search_query.trim();
+  const parts: string[] = [];
+  if (item.brand) parts.push(item.brand);
+  if (item.category) parts.push(item.category);
+  if (item.item_name) parts.push(item.item_name);
+  if (item.color) parts.push(item.color);
+  // Bake gender directly into query for stronger filtering
+  const gender = detectGender(item);
+  if (gender === "men") parts.push("mens");
+  if (gender === "women") parts.push("womens");
+  if (item.size) parts.push(item.size);
+  return parts.join(" ").trim();
+})();
 
   if (!textQuery && !item.reference_image_url) {
     console.log(`[runSearchEngine] Skipping item ${item.id} — no query and no image`);
