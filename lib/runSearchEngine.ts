@@ -266,19 +266,32 @@ const WOMENS_EXCLUDE = [
   "mens", "men's", " men ", "boys", "boy's",
 ];
 
-function filterByGender(listings: Listing[], item: TrackedItem): Listing[] {
+function filterListings(listings: Listing[], item: TrackedItem): Listing[] {
   const gender = detectGender(item);
-  if (!gender) return listings;
+  const expectedCurrency = (item.currency ?? "GBP").toUpperCase();
 
   return listings.filter((l) => {
     const title = l.title.toLowerCase();
 
+    // Remove non-GBP listings (e.g. USD results from eBay US)
+    if (l.price_currency && l.price_currency.toUpperCase() !== expectedCurrency) {
+      console.log(`[filterListings] Removed non-${expectedCurrency} listing: ${l.title} (${l.price_currency})`);
+      return false;
+    }
+
+    // Gender filtering
     if (gender === "men") {
-      return !MENS_EXCLUDE.some((w) => title.includes(w));
+      if (MENS_EXCLUDE.some((w) => title.includes(w))) {
+        console.log(`[filterListings] Removed wrong-gender listing: ${l.title}`);
+        return false;
+      }
     }
 
     if (gender === "women") {
-      return !WOMENS_EXCLUDE.some((w) => title.includes(w));
+      if (WOMENS_EXCLUDE.some((w) => title.includes(w))) {
+        console.log(`[filterListings] Removed wrong-gender listing: ${l.title}`);
+        return false;
+      }
     }
 
     return true;
@@ -330,8 +343,8 @@ async function searchEbayPlatform(item: TrackedItem): Promise<Listing[]> {
   ? imageListings
   : dedupeListings([...textListings, ...imageListings]);
 
-const filtered = filterByGender(combined, item);
-console.log(`[runSearchEngine] After gender filter: ${filtered.length} of ${combined.length} listings kept`);
+const filtered = filterListings(combined, item);
+console.log(`[runSearchEngine] After filtering: ${filtered.length} of ${combined.length} listings kept`);
 return filtered;
 }
 
