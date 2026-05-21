@@ -252,6 +252,38 @@ function dedupeListings(listings: Listing[]) {
 
   return Array.from(map.values()).slice(0, 20);
 }
+const FEMALE_WORDS = [
+  "women", "womens", "woman", "ladies", "lady", "girls", "girl",
+  "female", "feminine", "dress", "skirt", "blouse", "bra",
+];
+
+const MENS_EXCLUDE = [
+  "womens", "women's", "woman", "ladies", "lady",
+  "girls", "girl's", "female", "dress", "skirt",
+];
+
+const WOMENS_EXCLUDE = [
+  "mens", "men's", " men ", "boys", "boy's",
+];
+
+function filterByGender(listings: Listing[], item: TrackedItem): Listing[] {
+  const gender = detectGender(item);
+  if (!gender) return listings;
+
+  return listings.filter((l) => {
+    const title = l.title.toLowerCase();
+
+    if (gender === "men") {
+      return !MENS_EXCLUDE.some((w) => title.includes(w));
+    }
+
+    if (gender === "women") {
+      return !WOMENS_EXCLUDE.some((w) => title.includes(w));
+    }
+
+    return true;
+  });
+}
 
 async function searchEbayPlatform(item: TrackedItem): Promise<Listing[]> {
   // Build the best possible search query from available fields
@@ -294,9 +326,13 @@ async function searchEbayPlatform(item: TrackedItem): Promise<Listing[]> {
     }
   }
 
-  return item.image_only_search
-    ? imageListings
-    : dedupeListings([...textListings, ...imageListings]);
+  const combined = item.image_only_search
+  ? imageListings
+  : dedupeListings([...textListings, ...imageListings]);
+
+const filtered = filterByGender(combined, item);
+console.log(`[runSearchEngine] After gender filter: ${filtered.length} of ${combined.length} listings kept`);
+return filtered;
 }
 
 async function searchAllPlatforms(item: TrackedItem): Promise<Listing[]> {
