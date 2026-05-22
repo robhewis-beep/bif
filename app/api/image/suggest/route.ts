@@ -69,7 +69,7 @@ Rules:
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 1024,
         messages: [
           {
@@ -96,11 +96,12 @@ Rules:
     const data = await resp.json();
 
     if (!resp.ok) {
-      return NextResponse.json(
-        { error: data?.error?.message ?? "Claude vision request failed" },
-        { status: 500 }
-      );
-    }
+  console.error("[image/suggest] Claude API error:", JSON.stringify(data));
+  return NextResponse.json(
+    { error: data?.error?.message ?? `Claude vision request failed (${resp.status}): ${JSON.stringify(data)}` },
+    { status: 500 }
+  );
+}
 
     const content = data?.content?.[0]?.text;
 
