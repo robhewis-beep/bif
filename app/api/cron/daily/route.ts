@@ -19,10 +19,15 @@ export async function POST(req: Request) {
   try {
     const CRON_SECRET = getEnv("CRON_SECRET");
     const secret = req.headers.get("x-cron-secret") || "";
-
+    
+    console.log(`[cron] secret present: ${!!secret}, match: ${secret === CRON_SECRET}`);
+    
     if (secret !== CRON_SECRET) {
+      console.error("[cron] Unauthorized — secret mismatch");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    
+    console.log("[cron] Authorized — starting search + email run");
 
     const supabaseAdmin = getSupabaseAdmin();
 

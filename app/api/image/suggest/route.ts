@@ -27,80 +27,69 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "imageUrl must be a valid http(s) URL" }, { status: 400 });
     }
 
-    const apiKey = getEnv("OPENAI_API_KEY");
+    const apiKey = getEnv("ANTHROPIC_API_KEY");
 
-    const prompt = `
-You are helping a second-hand shopping search app.
+    // Fetch the image and convert to base64 for Claude
+    const imageResp = await fetch(imageUrl);
+    if (!imageResp.ok) {
+      throw new Error(`Could not fetch image: ${imageResp.status}`);
+    }
+    const imageBuffer = await imageResp.arrayBuffer();
+    const imageBase64 = Buffer.from(imageBuffer).toString("base64");
+    const contentType = imageResp.headers.get("content-type") ?? "image/jpeg";
 
-Look at the uploaded product image and return JSON only with this shape:
+    const prompt = `You are helping a second-hand marketplace search app find specific items of clothing and accessories.
+
+Analyse this image carefully and return JSON only with this exact shape:
 {
   "brand": string,
   "itemName": string,
   "category": string,
   "sizeHint": string,
+  "color": string,
+  "keywords": string,
   "searchQuery": string
 }
 
 Rules:
-- Be concise and practical.
-- If brand is not clear, use "".
-- itemName should be short, e.g. "Detroit jacket", "work jacket", "cargo trousers".
-- category should be a simple retail category like "jacket", "coat", "jeans", "boots", "bag".
-- sizeHint should only be filled if visually obvious, otherwise "".
-- searchQuery should be a strong marketplace search phrase using the best available clues.
-- Output valid JSON only.
-`.trim();
+- brand: the brand name if visible on label or recognisable from design. Use "" if unclear.
+- itemName: short description e.g. "sherpa fleece jacket", "cargo trousers", "leather boots"
+- category: one of: Fleece, Jacket, Coat, Shirt, T-Shirt, Jumper / Knitwear, Hoodie / Sweatshirt, Trousers, Jeans, Shorts, Dress, Skirt, Boots, Trainers / Sneakers, Shoes, Bag, Belt, Hat / Cap, Jewellery, Watch, Sunglasses, Other
+- sizeHint: only if a size label is clearly visible, otherwise ""
+- color: primary colour(s) e.g. "navy blue", "navy blue with orange lining"
+- keywords: distinctive features that make this item unique and searchable e.g. "aztec zip trim, orange mesh lining, sherpa texture, full zip". Be as specific as possible.
+- searchQuery: the best possible eBay search phrase combining all available clues. Be specific — include distinctive details that narrow results.
+- Output valid JSON only. No markdown, no explanation.`;
 
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "image_search_suggestion",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                brand: { type: "string" },
-                itemName: { type: "string" },
-                category: { type: "string" },
-                sizeHint: { type: "string" },
-                searchQuery: { type: "string" },
-              },
-              required: ["brand", "itemName", "category", "sizeHint", "searchQuery"],
-            },
-          },
-        },
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1024,
         messages: [
-          {
-            role: "developer",
-            content: prompt,
-          },
           {
             role: "user",
             content: [
               {
-                type: "text",
-                text: "Suggest the best search fields for this item image.",
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: contentType,
+                  data: imageBase64,
+                },
               },
               {
-                type: "image_url",
-                image_url: {
-                  url: imageUrl,
-                  detail: "high",
-                },
+                type: "text",
+                text: prompt,
               },
             ],
           },
         ],
-        max_tokens: 300,
       }),
     });
 
@@ -108,27 +97,32 @@ Rules:
 
     if (!resp.ok) {
       return NextResponse.json(
-        { error: data?.error?.message ?? "Vision request failed" },
+        { error: data?.error?.message ?? "Claude vision request failed" },
         { status: 500 }
       );
     }
 
-    const content = data?.choices?.[0]?.message?.content;
+    const content = data?.content?.[0]?.text;
 
     if (typeof content !== "string" || !content.trim()) {
       return NextResponse.json({ error: "No suggestion returned" }, { status: 500 });
     }
+
+    // Strip markdown code fences if present
+    const cleaned = content.replace(/```json|```/g, "").trim();
 
     let parsed: {
       brand: string;
       itemName: string;
       category: string;
       sizeHint: string;
+      color: string;
+      keywords: string;
       searchQuery: string;
     };
 
     try {
-      parsed = JSON.parse(content);
+      parsed = JSON.parse(cleaned);
     } catch {
       return NextResponse.json({ error: "Model returned invalid JSON" }, { status: 500 });
     }

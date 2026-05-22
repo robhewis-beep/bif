@@ -10,6 +10,7 @@ type Listing = {
   price_value: number | null;
   price_currency: string | null;
   item_condition: string | null;
+  listing_brand: string | null;
 };
 
 type TrackedItem = {
@@ -103,6 +104,13 @@ function mapEbayItems(items: any[]): Listing[] {
         it.additionalImages?.[0]?.imageUrl ??
         null;
 
+      // Extract brand from localizedAspects if available
+      const aspects: any[] = it.localizedAspects ?? [];
+      const brandAspect = aspects.find(
+        (a: any) => a.name?.toLowerCase() === "brand"
+      );
+      const listingBrand = brandAspect?.value ?? null;
+
       return {
         platform: "ebay" as const,
         title: cleanEbayTitle((it.title ?? it.itemTitle ?? "eBay listing").toString()),
@@ -111,6 +119,7 @@ function mapEbayItems(items: any[]): Listing[] {
         price_value: it.price?.value != null ? Number(it.price.value) : null,
         price_currency: it.price?.currency != null ? String(it.price.currency) : null,
         item_condition: it.condition != null ? String(it.condition) : null,
+        listing_brand: listingBrand ? String(listingBrand).toLowerCase() : null,
       };
     })
     .filter((x: Listing) => x.url?.includes("/itm/"));
@@ -269,6 +278,7 @@ const WOMENS_EXCLUDE = [
 function filterListings(listings: Listing[], item: TrackedItem): Listing[] {
   const gender = detectGender(item);
   const expectedCurrency = (item.currency ?? "GBP").toUpperCase();
+  const searchedBrand = item.brand?.toLowerCase().trim() ?? null;
 
   return listings.filter((l) => {
     const title = l.title.toLowerCase();
@@ -277,6 +287,39 @@ function filterListings(listings: Listing[], item: TrackedItem): Listing[] {
     if (l.price_currency && l.price_currency.toUpperCase() !== expectedCurrency) {
       console.log(`[filterListings] Removed non-${expectedCurrency} listing: ${l.title} (${l.price_currency})`);
       return false;
+    }
+
+    // Brand filtering — if user specified a brand, reject listings
+    // whose eBay brand aspect clearly belongs to a different brand
+    if (searchedBrand && l.listing_brand) {
+      const brandsMatch =
+        l.listing_brand.includes(searchedBrand) ||
+        searchedBrand.includes(l.listing_brand);
+      if (!brandsMatch) {
+        console.log(`[filterListings] Removed wrong-brand listing: "${l.title}" (listed brand: ${l.listing_brand}, searched: ${searchedBrand})`);
+        return false;
+      }
+    }
+
+    // Also check title doesn't contain a clearly different brand
+    // Only applies when we have a searched brand
+    if (searchedBrand) {
+      const knownBrands = [
+        "stone island", "north face", "patagonia", "carhartt",
+        "ralph lauren", "tommy hilfiger", "nike", "adidas", "puma",
+        "berghaus", "barbour", "superdry", "levi", "wrangler",
+        "columbia", "arc'teryx", "canada goose", "moncler",
+      ];
+      for (const brand of knownBrands) {
+        if (
+          brand !== searchedBrand &&
+          !searchedBrand.includes(brand) &&
+          title.includes(brand)
+        ) {
+          console.log(`[filterListings] Removed known wrong-brand in title: "${l.title}"`);
+          return false;
+        }
+      }
     }
 
     // Gender filtering
