@@ -106,7 +106,7 @@ export default function DashboardPage() {
         justifyContent: "space-between",
         alignItems: "center",
         padding: "16px 28px",
-        background: "#fff",
+        background: "var(--bif-bg)",
         borderBottom: "1px solid var(--bif-border)",
         position: "sticky",
         top: 0,
@@ -131,7 +131,7 @@ export default function DashboardPage() {
       {/* Hero band */}
       <div style={{
         padding: "28px 28px 24px",
-        background: "#fff",
+        background: "var(--bif-bg)",
         borderBottom: "1px solid var(--bif-border)",
       }}>
         <div className="bif-eyebrow" style={{ marginBottom: 6 }}>Your searches</div>
@@ -206,7 +206,7 @@ export default function DashboardPage() {
           <div style={{
             textAlign: "center",
             padding: "48px 24px",
-            background: "#fff",
+            background: "var(--bif-bg)",
             borderRadius: "var(--bif-radius-lg)",
             border: "1px solid var(--bif-border)",
           }}>
@@ -233,7 +233,7 @@ export default function DashboardPage() {
               <div
                 key={it.id}
                 style={{
-                  background: "#fff",
+                  background: "var(--bif-bg)",
                   border: "1px solid var(--bif-border)",
                   borderLeft: `3px solid ${it.is_paused ? "var(--bif-border)" : "var(--bif-amber)"}`,
                   borderRadius: "var(--bif-radius-lg)",
