@@ -3,32 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
+import Link from "next/link";
 
 const CATEGORIES = [
-  "Fleece",
-  "Jacket",
-  "Coat",
-  "Shirt",
-  "T-Shirt",
-  "Jumper / Knitwear",
-  "Hoodie / Sweatshirt",
-  "Trousers",
-  "Jeans",
-  "Shorts",
-  "Dress",
-  "Skirt",
-  "Boots",
-  "Trainers / Sneakers",
-  "Shoes",
-  "Sandals",
-  "Bag",
-  "Belt",
-  "Hat / Cap",
-  "Scarf / Gloves",
-  "Jewellery",
-  "Watch",
-  "Sunglasses",
-  "Other",
+  "Fleece", "Jacket", "Coat", "Shirt", "T-Shirt",
+  "Jumper / Knitwear", "Hoodie / Sweatshirt", "Trousers", "Jeans",
+  "Shorts", "Dress", "Skirt", "Boots", "Trainers / Sneakers",
+  "Shoes", "Sandals", "Bag", "Belt", "Hat / Cap",
+  "Scarf / Gloves", "Jewellery", "Watch", "Sunglasses", "Other",
 ];
 
 const CONDITIONS = ["Any", "New", "Used - Excellent", "Used - Good", "Used - Fair"];
@@ -58,29 +40,6 @@ export default function AddPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const inputStyle: React.CSSProperties = {
-    padding: 10,
-    borderRadius: 8,
-    border: "1px solid #ddd",
-    fontSize: 14,
-    width: "100%",
-    boxSizing: "border-box",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: "grid",
-    gap: 6,
-  };
-
-  const buttonStyle: React.CSSProperties = {
-    padding: "8px 12px",
-    borderRadius: 10,
-    border: "1px solid #ddd",
-    fontWeight: 800,
-    cursor: "pointer",
-    transition: "all 0.15s ease",
-  };
-
   async function uploadReferenceImage(userId: string) {
     if (!imageFile) return null;
     if (uploadedImageUrl) return uploadedImageUrl;
@@ -100,10 +59,7 @@ export default function AddPage() {
   }
 
   async function suggestFromImage() {
-    if (!imageFile) {
-      setError("Please choose an image first.");
-      return;
-    }
+    if (!imageFile) { setError("Please choose an image first."); return; }
 
     setSuggesting(true);
     setError(null);
@@ -126,7 +82,7 @@ export default function AddPage() {
       const text = await resp.text();
       let out: any;
       try { out = JSON.parse(text); } catch {
-        throw new Error(`Image suggest route returned non-JSON: ${text.slice(0, 120)}`);
+        throw new Error(`Image suggest returned non-JSON: ${text.slice(0, 120)}`);
       }
 
       if (!resp.ok) throw new Error(out?.error ?? "Image suggestion failed");
@@ -135,19 +91,19 @@ export default function AddPage() {
       if (!s) throw new Error("No suggestion returned");
 
       if (s.brand) setBrand(s.brand);
-if (s.category) {
-  const matched = CATEGORIES.find(
-    (c) => c.toLowerCase() === s.category.toLowerCase()
-  );
-  setCategory(matched ?? "Other");
-}
-if (s.keywords) setKeywords(s.keywords);
-if (s.color) setColor(s.color);
+      if (s.category) {
+        const matched = CATEGORIES.find(
+          (c) => c.toLowerCase() === s.category.toLowerCase()
+        );
+        setCategory(matched ?? "Other");
+      }
+      if (s.keywords) setKeywords(s.keywords);
+      if (s.color) setColor(s.color);
 
-      const filledCount = [s.brand, s.category, s.searchQuery].filter(Boolean).length;
+      const filledCount = [s.brand, s.category, s.keywords].filter(Boolean).length;
       setSuggestionStatus(
         filledCount > 0
-          ? "Suggestions added from image — please check and edit before saving."
+          ? "Suggestions added — please check and edit before saving."
           : "No strong suggestions found from this image."
       );
     } catch (err: any) {
@@ -220,151 +176,385 @@ if (s.color) setColor(s.color);
 
   const previewQuery = buildSearchQuery();
 
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "10px 14px",
+    borderRadius: "var(--bif-radius-md)" as any,
+    border: "1px solid var(--bif-border)",
+    background: "var(--bif-bg)",
+    color: "var(--bif-text)",
+    fontSize: 14,
+    fontFamily: "var(--bif-font-sans)",
+    boxSizing: "border-box",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "grid",
+    gap: 6,
+    fontSize: 14,
+    fontWeight: 500,
+    color: "var(--bif-text)",
+  };
+
   return (
-    <main style={{ maxWidth: 640, margin: "40px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 26, fontWeight: 800 }}>Add tracked item</h1>
+    <div style={{
+      minHeight: "100vh",
+      background: "var(--bif-bg)",
+      fontFamily: "var(--bif-font-sans)",
+    }}>
 
-      <form onSubmit={onSubmit} style={{ marginTop: 16, display: "grid", gap: 14 }}>
+      {/* Nav */}
+      <nav style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "16px 28px",
+        background: "var(--bif-bg)",
+        borderBottom: "1px solid var(--bif-border)",
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+      }}>
+        <Link href="/dashboard" className="bif-logo" style={{ textDecoration: "none" }}>
+          beloved<span>.</span>
+        </Link>
+        <Link href="/dashboard" className="bif-btn" style={{ fontSize: 13 }}>
+          ← Back to dashboard
+        </Link>
+      </nav>
 
-        {/* IMAGE */}
-        <label style={labelStyle}>
-          <span style={{ fontWeight: 700 }}>Reference image (optional)</span>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0] ?? null;
-              setImageFile(file);
-              setUploadedImageUrl(null);
-              setError(null);
-              setSuggestionStatus(null);
-              if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
-              setImagePreviewUrl(file ? URL.createObjectURL(file) : null);
-              if (!file) setImageOnlySearch(false);
-            }}
-          />
-        </label>
+      {/* Page content */}
+      <div style={{ maxWidth: 600, margin: "0 auto", padding: "32px 24px 60px" }}>
 
-        {imagePreviewUrl && (
-          <>
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Preview</div>
-              <img
-                src={imagePreviewUrl}
-                alt="Reference preview"
-                style={{ width: 160, height: 160, objectFit: "cover", borderRadius: 12, border: "1px solid #ddd" }}
+        {/* Header */}
+        <div className="bif-eyebrow" style={{ marginBottom: 8 }}>New search</div>
+        <h1 style={{
+          fontFamily: "var(--bif-font-serif)",
+          fontSize: 26,
+          fontWeight: 400,
+          color: "var(--bif-text)",
+          margin: "0 0 6px",
+        }}>
+          Add a tracked item
+        </h1>
+        <p style={{ fontSize: 13, color: "var(--bif-mauve)", margin: "0 0 28px" }}>
+          We'll search for this automatically and alert you when something is found.
+        </p>
+
+        <form onSubmit={onSubmit} style={{ display: "grid", gap: 20 }}>
+
+          {/* IMAGE UPLOAD */}
+          <div style={{
+            background: "var(--bif-card)",
+            border: "1px solid var(--bif-border)",
+            borderRadius: "var(--bif-radius-lg)",
+            padding: 20,
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4, color: "var(--bif-text)" }}>
+              Reference image
+              <span style={{ fontWeight: 400, fontSize: 12, color: "var(--bif-mauve)", marginLeft: 6 }}>optional</span>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--bif-mauve)", marginBottom: 12 }}>
+              Upload a photo of the item — we'll use it to improve search accuracy
+            </div>
+
+            {/* File input styled as a button */}
+            <label style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 16px",
+              borderRadius: "var(--bif-radius-md)",
+              border: "1px solid var(--bif-border)",
+              background: "var(--bif-bg)",
+              color: "var(--bif-text)",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}>
+              📎 Choose image
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setImageFile(file);
+                  setUploadedImageUrl(null);
+                  setError(null);
+                  setSuggestionStatus(null);
+                  if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+                  setImagePreviewUrl(file ? URL.createObjectURL(file) : null);
+                  if (!file) setImageOnlySearch(false);
+                }}
               />
-            </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button type="button" onClick={suggestFromImage} disabled={suggesting}
-                style={{ ...buttonStyle, opacity: suggesting ? 0.6 : 1 }}>
-                {suggesting ? "Suggesting..." : "Suggest from image"}
-              </button>
-              <button type="button" onClick={() => setImageOnlySearch((v) => !v)}
-                style={{ ...buttonStyle, background: imageOnlySearch ? "#111" : "#fff", color: imageOnlySearch ? "#fff" : "#111" }}>
-                {imageOnlySearch ? "Image only: ON" : "Image only: OFF"}
-              </button>
-            </div>
-          </>
-        )}
+            </label>
 
-        {suggestionStatus && (
-          <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 10, fontWeight: 700, background: "#f7f7f7" }}>
-            {suggestionStatus}
+            {imagePreviewUrl && (
+              <div style={{ marginTop: 16 }}>
+                <img
+                  src={imagePreviewUrl}
+                  alt="Reference preview"
+                  style={{
+                    width: 120,
+                    height: 120,
+                    objectFit: "cover",
+                    borderRadius: 10,
+                    border: "1px solid var(--bif-border)",
+                    display: "block",
+                    marginBottom: 12,
+                  }}
+                />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={suggestFromImage}
+                    disabled={suggesting}
+                    className="bif-btn bif-btn-dark"
+                    style={{ fontSize: 13, opacity: suggesting ? 0.6 : 1 }}
+                  >
+                    {suggesting ? "Analysing…" : "✦ Suggest from image"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImageOnlySearch((v) => !v)}
+                    className="bif-btn"
+                    style={{
+                      fontSize: 13,
+                      background: imageOnlySearch ? "var(--bif-amber)" : undefined,
+                      color: imageOnlySearch ? "#fff" : undefined,
+                      borderColor: imageOnlySearch ? "var(--bif-amber)" : undefined,
+                    }}
+                  >
+                    {imageOnlySearch ? "Image only: ON" : "Image only: OFF"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {suggestionStatus && (
+              <div style={{
+                marginTop: 12,
+                padding: "10px 14px",
+                borderRadius: "var(--bif-radius-md)",
+                background: "var(--bif-bg)",
+                border: "1px solid var(--bif-border)",
+                fontSize: 13,
+                color: "var(--bif-mauve)",
+              }}>
+                ✓ {suggestionStatus}
+              </div>
+            )}
           </div>
-        )}
 
-        {/* BRAND */}
-        <label style={labelStyle}>
-          <span style={{ fontWeight: 700 }}>Brand <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></span>
-          <input style={inputStyle} placeholder="e.g. Carhartt, Patagonia, Levi's" value={brand} onChange={(e) => setBrand(e.target.value)} />
-        </label>
+          {/* ITEM DETAILS CARD */}
+          <div style={{
+            background: "var(--bif-card)",
+            border: "1px solid var(--bif-border)",
+            borderRadius: "var(--bif-radius-lg)",
+            padding: 20,
+            display: "grid",
+            gap: 16,
+          }}>
+            <div style={{
+              fontSize: 11,
+              letterSpacing: "1.2px",
+              textTransform: "uppercase",
+              color: "var(--bif-mauve)",
+              fontWeight: 500,
+            }}>
+              Item details
+            </div>
 
-        {/* CATEGORY */}
-        <label style={labelStyle}>
-          <span style={{ fontWeight: 700 }}>Category</span>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
+            {/* BRAND */}
+            <label style={labelStyle}>
+              Brand
+              <input
+                style={inputStyle}
+                placeholder="e.g. Carhartt, Patagonia, Levi's"
+                value={brand}
+                onChange={(e) => setBrand(e.target.value)}
+              />
+            </label>
 
-        {/* KEYWORDS */}
-        <label style={labelStyle}>
-          <span style={{ fontWeight: 700 }}>Keywords <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></span>
-          <input
-            style={inputStyle}
-            placeholder="e.g. zip-up, vintage, oversized, corduroy, quilted"
-            value={keywords}
-            onChange={(e) => setKeywords(e.target.value)}
-          />
-          <span style={{ opacity: 0.6, fontSize: 12 }}>Describe distinctive features that make this item unique</span>
-        </label>
+            {/* CATEGORY */}
+            <label style={labelStyle}>
+              Category
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                style={inputStyle}
+              >
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
 
-        {/* GENDER */}
-        <label style={labelStyle}>
-          <span style={{ fontWeight: 700 }}>Gender</span>
-          <select value={gender} onChange={(e) => setGender(e.target.value)} style={inputStyle}>
-            {GENDERS.map((g) => <option key={g} value={g}>{g}</option>)}
-          </select>
-        </label>
+            {/* KEYWORDS */}
+            <label style={labelStyle}>
+              Keywords
+              <input
+                style={inputStyle}
+                placeholder="e.g. zip-up, vintage, oversized, corduroy"
+                value={keywords}
+                onChange={(e) => setKeywords(e.target.value)}
+              />
+              <span style={{ fontSize: 12, color: "var(--bif-mauve)", fontWeight: 400 }}>
+                Describe distinctive features that make this item unique
+              </span>
+            </label>
 
-        {/* SIZE & COLOUR — side by side */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <label style={labelStyle}>
-            <span style={{ fontWeight: 700 }}>Size <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></span>
-            <input style={inputStyle} placeholder="e.g. M, 32, UK 9" value={size} onChange={(e) => setSize(e.target.value)} />
-          </label>
-          <label style={labelStyle}>
-            <span style={{ fontWeight: 700 }}>Colour <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></span>
-            <input style={inputStyle} placeholder="e.g. navy, olive, burgundy" value={color} onChange={(e) => setColor(e.target.value)} />
-          </label>
-        </div>
+            {/* GENDER */}
+            <label style={labelStyle}>
+              Gender
+              <select
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+                style={inputStyle}
+              >
+                {GENDERS.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </label>
 
-        {/* CONDITION */}
-        <label style={labelStyle}>
-          <span style={{ fontWeight: 700 }}>Condition</span>
-          <select value={condition} onChange={(e) => setCondition(e.target.value)} style={inputStyle}>
-            {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
+            {/* SIZE & COLOUR */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={labelStyle}>
+                Size
+                <input
+                  style={inputStyle}
+                  placeholder="e.g. M, 32, UK 9"
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                />
+              </label>
+              <label style={labelStyle}>
+                Colour
+                <input
+                  style={inputStyle}
+                  placeholder="e.g. navy, olive"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                />
+              </label>
+            </div>
 
-        {/* MAX PRICE */}
-        <label style={labelStyle}>
-          <span style={{ fontWeight: 700 }}>Max price in £ <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></span>
-          <input
-            style={inputStyle}
-            type="number"
-            min={1}
-            step="1"
-            value={maxPrice}
-            onChange={(e) => setMaxPrice(e.target.value === "" ? "" : Number(e.target.value))}
-          />
-        </label>
-
-        {/* SEARCH FREQUENCY */}
-        <label style={labelStyle}>
-          <span style={{ fontWeight: 700 }}>Search frequency</span>
-          <select value={searchFrequency} onChange={(e) => setSearchFrequency(e.target.value as "daily" | "weekly")} style={inputStyle}>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-          </select>
-        </label>
-
-        {/* SEARCH PREVIEW */}
-        {previewQuery && (
-          <div style={{ background: "#f7f7f7", border: "1px solid #ddd", borderRadius: 10, padding: 10 }}>
-            <div style={{ fontWeight: 700, fontSize: 12, opacity: 0.6, marginBottom: 4 }}>SEARCH PREVIEW</div>
-            <div style={{ fontWeight: 700 }}>{previewQuery}</div>
+            {/* CONDITION */}
+            <label style={labelStyle}>
+              Condition
+              <select
+                value={condition}
+                onChange={(e) => setCondition(e.target.value)}
+                style={inputStyle}
+              >
+                {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
           </div>
-        )}
 
-        {error && <div style={{ color: "crimson" }}>{error}</div>}
+          {/* SEARCH SETTINGS CARD */}
+          <div style={{
+            background: "var(--bif-card)",
+            border: "1px solid var(--bif-border)",
+            borderRadius: "var(--bif-radius-lg)",
+            padding: 20,
+            display: "grid",
+            gap: 16,
+          }}>
+            <div style={{
+              fontSize: 11,
+              letterSpacing: "1.2px",
+              textTransform: "uppercase",
+              color: "var(--bif-mauve)",
+              fontWeight: 500,
+            }}>
+              Search settings
+            </div>
 
-        <button style={{ ...buttonStyle, padding: 12, opacity: loading ? 0.6 : 1, background: "#111", color: "#fff" }} disabled={loading}>
-          {loading ? "Saving..." : "Save tracked item"}
-        </button>
+            {/* MAX PRICE */}
+            <label style={labelStyle}>
+              Max price (£)
+              <input
+                style={inputStyle}
+                type="number"
+                min={1}
+                step="1"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value === "" ? "" : Number(e.target.value))}
+              />
+            </label>
 
-      </form>
-    </main>
+            {/* FREQUENCY */}
+            <label style={labelStyle}>
+              Search frequency
+              <select
+                value={searchFrequency}
+                onChange={(e) => setSearchFrequency(e.target.value as "daily" | "weekly")}
+                style={inputStyle}
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </select>
+            </label>
+          </div>
+
+          {/* SEARCH PREVIEW */}
+          {previewQuery && (
+            <div style={{
+              padding: "12px 16px",
+              borderRadius: "var(--bif-radius-md)",
+              background: "var(--bif-card)",
+              border: "1px solid var(--bif-border)",
+              borderLeft: "3px solid var(--bif-amber)",
+            }}>
+              <div style={{
+                fontSize: 10,
+                letterSpacing: "1.2px",
+                textTransform: "uppercase",
+                color: "var(--bif-mauve)",
+                marginBottom: 4,
+                fontWeight: 500,
+              }}>
+                Search preview
+              </div>
+              <div style={{
+                fontFamily: "var(--bif-font-serif)",
+                fontSize: 15,
+                color: "var(--bif-text)",
+              }}>
+                {previewQuery}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div style={{
+              padding: "10px 14px",
+              borderRadius: "var(--bif-radius-md)",
+              background: "rgba(162,45,45,0.08)",
+              border: "1px solid rgba(162,45,45,0.2)",
+              fontSize: 13,
+              color: "#A32D2D",
+            }}>
+              {error}
+            </div>
+          )}
+
+          {/* SUBMIT */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="bif-btn bif-btn-dark"
+            style={{
+              padding: "12px 24px",
+              fontSize: 14,
+              opacity: loading ? 0.6 : 1,
+              justifyContent: "center",
+            }}
+          >
+            {loading ? "Saving…" : "Save tracked item"}
+          </button>
+
+        </form>
+      </div>
+    </div>
   );
 }
