@@ -2,26 +2,22 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500&display=swap');
 
 :root {
-  /* Beloved. colour palette */
   --bif-navy:       #2C2B3E;
   --bif-amber:      #E8824A;
   --bif-mauve:      #8B7B8B;
   --bif-yellow:     #F2E090;
-  --bif-bg:         #FAFAF8;
+  --bif-bg:         #EDECEA;
   --bif-card:       #FFFFFF;
   --bif-border:     rgba(0, 0, 0, 0.08);
   --bif-text:       #1C1C1A;
   --bif-text-muted: #8B7B8B;
 
-  /* Sunset gradient */
   --bif-gradient-login: linear-gradient(175deg, #2C2B3E 0%, #8B7B8B 35%, #E8824A 72%, #F2E090 100%);
   --bif-gradient-rule:  linear-gradient(90deg, #2C2B3E, #8B7B8B, #E8824A, #F2E090);
 
-  /* Typography */
   --bif-font-serif: 'Playfair Display', Georgia, serif;
   --bif-font-sans:  'Inter', system-ui, sans-serif;
 
-  /* Spacing */
   --bif-radius-sm:  6px;
   --bif-radius-md:  8px;
   --bif-radius-lg:  12px;
@@ -29,6 +25,18 @@
 
   --background: var(--bif-bg);
   --foreground: var(--bif-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bif-bg:         #28272F;
+    --bif-card:       #38373F;
+    --bif-border:     rgba(255, 255, 255, 0.09);
+    --bif-text:       #F0EEE8;
+    --bif-text-muted: #9B8FA0;
+    --background:     #28272F;
+    --foreground:     #F0EEE8;
+  }
 }
 
 @theme inline {
