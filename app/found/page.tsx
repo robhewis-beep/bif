@@ -19,10 +19,13 @@ type FoundRow = {
     brand: string | null;
     item_name: string | null;
     size: string | null;
+    deleted_at: string | null;
   };
 };
 
 type GroupedRow = FoundRow & { isNew: boolean };
+
+const FOUR_WEEKS_MS = 28 * 24 * 60 * 60 * 1000;
 
 export default function FoundPage() {
   const router = useRouter();
@@ -46,11 +49,7 @@ export default function FoundPage() {
   async function load() {
     const { data: sessionData } = await supabase.auth.getSession();
     const session = sessionData.session;
-
-    if (!session) {
-      router.push("/login");
-      return;
-    }
+    if (!session) { router.push("/login"); return; }
 
     const uid = session.user.id;
     setUserId(uid);
@@ -87,7 +86,8 @@ export default function FoundPage() {
         tracked_item:tracked_items!found_listings_tracked_item_id_fkey (
           brand,
           item_name,
-          size
+          size,
+          deleted_at
         )
       `)
       .eq("user_id", uid)
@@ -107,22 +107,28 @@ export default function FoundPage() {
       return;
     }
 
-    const mappedRows: FoundRow[] = (data ?? []).map((row: any) => ({
-  id: row.id,
-  platform: row.platform,
-  title: row.title,
-  listing_url: row.listing_url,
-  image_url: row.image_url ?? null,
-  matched_at: row.matched_at,
-  price_value: row.price_value ?? null,
-  price_currency: row.price_currency ?? null,
-  item_condition: row.item_condition ?? null,
-  tracked_item: Array.isArray(row.tracked_item)
-    ? row.tracked_item[0] ?? null
-    : row.tracked_item ?? null,
-}));
+    const mappedRows: FoundRow[] = (data ?? [])
+      .map((row: any) => ({
+        id: row.id,
+        platform: row.platform,
+        title: row.title,
+        listing_url: row.listing_url,
+        image_url: row.image_url ?? null,
+        matched_at: row.matched_at,
+        price_value: row.price_value ?? null,
+        price_currency: row.price_currency ?? null,
+        item_condition: row.item_condition ?? null,
+        tracked_item: Array.isArray(row.tracked_item)
+          ? row.tracked_item[0] ?? null
+          : row.tracked_item ?? null,
+      }))
+      .filter((row: FoundRow) => {
+        const deletedAt = row.tracked_item?.deleted_at;
+        if (!deletedAt) return true;
+        return new Date(deletedAt).getTime() > Date.now() - FOUR_WEEKS_MS;
+      });
 
-setRows(mappedRows);
+    setRows(mappedRows);
     setLoading(false);
 
     await supabase
@@ -136,166 +142,354 @@ setRows(mappedRows);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, GroupedRow[]>();
+  const { activeGrouped, pastGrouped } = useMemo(() => {
+    const activeMap = new Map<string, GroupedRow[]>();
+    const pastMap = new Map<string, GroupedRow[]>();
 
     for (const r of rows) {
       const ti = r.tracked_item;
-
       const brand = ti?.brand ?? "Unknown";
       const itemName = ti?.item_name ?? "search item";
       const size = ti?.size ? ` (${ti.size})` : "";
-
       const key = `${brand} — ${itemName}${size}`;
-
       const isNew = new Date(r.matched_at).getTime() > lastSeen;
       const rowWithNew: GroupedRow = { ...r, isNew };
+      const isDeleted = !!ti?.deleted_at;
 
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(rowWithNew);
+      if (isDeleted) {
+        if (!pastMap.has(key)) pastMap.set(key, []);
+        pastMap.get(key)!.push(rowWithNew);
+      } else {
+        if (!activeMap.has(key)) activeMap.set(key, []);
+        activeMap.get(key)!.push(rowWithNew);
+      }
     }
 
-    return Array.from(map.entries());
+    return {
+      activeGrouped: Array.from(activeMap.entries()),
+      pastGrouped: Array.from(pastMap.entries()),
+    };
   }, [rows, lastSeen]);
 
-  return (
-    <main style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontSize: 26, fontWeight: 800 }}>Found listings</h1>
+  function renderListingCard(r: GroupedRow) {
+    const isNew = new Date(r.matched_at).getTime() > new Date(lastViewed).getTime();
+    const price = r.price_value != null
+      ? `${r.price_currency ?? "£"} ${r.price_value}`.trim()
+      : "";
+    const meta = [price, r.item_condition].filter(Boolean).join(" · ");
 
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <button
-            onClick={markAllAsSeen}
+    return (
+      <a
+        key={r.id}
+        href={r.listing_url}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          display: "flex",
+          gap: 12,
+          alignItems: "center",
+          padding: "12px 14px",
+          background: "var(--bif-bg)",
+          border: "1px solid var(--bif-border)",
+          borderRadius: "var(--bif-radius-md)",
+          textDecoration: "none",
+        }}
+      >
+        {r.image_url ? (
+          <img
+            src={r.image_url}
+            alt={r.title || "Listing image"}
             style={{
-              padding: "8px 12px",
+              width: 64,
+              height: 64,
+              objectFit: "cover",
               borderRadius: 8,
-              border: "1px solid #ddd",
-              background: "transparent",
-              fontWeight: 600,
-              cursor: "pointer",
+              flexShrink: 0,
+              border: "1px solid var(--bif-border)",
             }}
-          >
+          />
+        ) : (
+          <div style={{
+            width: 64,
+            height: 64,
+            borderRadius: 8,
+            flexShrink: 0,
+            background: "var(--bif-card)",
+            border: "1px solid var(--bif-border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 22,
+          }}>
+            🧥
+          </div>
+        )}
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{
+              fontFamily: "var(--bif-font-serif)",
+              fontSize: 14,
+              color: "var(--bif-text)",
+            }}>
+              {r.title}
+            </div>
+            {isNew && (
+              <span style={{
+                fontSize: 10,
+                fontWeight: 500,
+                padding: "2px 8px",
+                borderRadius: 20,
+                background: "var(--bif-amber)",
+                color: "#fff",
+                flexShrink: 0,
+              }}>
+                NEW
+              </span>
+            )}
+          </div>
+          <div style={{
+            fontSize: 12,
+            color: "var(--bif-mauve)",
+            marginTop: 4,
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+          }}>
+            <span style={{ textTransform: "capitalize" }}>{r.platform}</span>
+            <span style={{ opacity: 0.4 }}>·</span>
+            <span>{new Date(r.matched_at).toLocaleDateString("en-GB", {
+              day: "numeric", month: "short", year: "numeric",
+            })}</span>
+            {meta && (
+              <>
+                <span style={{ opacity: 0.4 }}>·</span>
+                <span>{meta}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div style={{
+          fontSize: 12,
+          color: "var(--bif-amber)",
+          flexShrink: 0,
+          fontWeight: 500,
+        }}>
+          View →
+        </div>
+      </a>
+    );
+  }
+
+  function renderGroup(
+    groupTitle: string,
+    groupRows: GroupedRow[],
+    isPast: boolean
+  ) {
+    const newCount = groupRows.filter((r) =>
+      new Date(r.matched_at).getTime() > new Date(lastViewed).getTime()
+    ).length;
+
+    return (
+      <details
+        key={groupTitle}
+        open={!isPast}
+        style={{
+          background: "var(--bif-card)",
+          border: "1px solid var(--bif-border)",
+          borderLeft: `3px solid ${isPast ? "var(--bif-border)" : "var(--bif-amber)"}`,
+          borderRadius: "var(--bif-radius-lg)",
+          padding: "14px 16px",
+          opacity: isPast ? 0.75 : 1,
+        }}
+      >
+        <summary style={{
+          cursor: "pointer",
+          listStyle: "none",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          outline: "none",
+        }}>
+          <div>
+            {isPast && (
+              <div style={{
+                fontSize: 10,
+                letterSpacing: "1px",
+                textTransform: "uppercase",
+                color: "var(--bif-mauve)",
+                marginBottom: 2,
+                fontWeight: 500,
+              }}>
+                Past search
+              </div>
+            )}
+            <div style={{
+              fontFamily: "var(--bif-font-serif)",
+              fontSize: 15,
+              color: "var(--bif-text)",
+            }}>
+              {groupTitle}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            {newCount > 0 && !isPast && (
+              <span style={{
+                fontSize: 10,
+                fontWeight: 500,
+                padding: "2px 9px",
+                borderRadius: 20,
+                background: "var(--bif-amber)",
+                color: "#fff",
+              }}>
+                {newCount} new
+              </span>
+            )}
+            <span style={{ fontSize: 12, color: "var(--bif-mauve)" }}>
+              {groupRows.length} found
+            </span>
+          </div>
+        </summary>
+
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          {groupRows.map((r) => renderListingCard(r))}
+        </div>
+
+        {isPast && (
+          <div style={{
+            marginTop: 12,
+            fontSize: 12,
+            color: "var(--bif-mauve)",
+            padding: "8px 12px",
+            background: "var(--bif-bg)",
+            borderRadius: "var(--bif-radius-md)",
+            border: "1px solid var(--bif-border)",
+          }}>
+            This search was deleted. Listings will be removed automatically after 4 weeks.
+          </div>
+        )}
+      </details>
+    );
+  }
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "var(--bif-bg)",
+      fontFamily: "var(--bif-font-sans)",
+    }}>
+      <nav style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "16px 28px",
+        background: "var(--bif-bg)",
+        borderBottom: "1px solid var(--bif-border)",
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+      }}>
+        <Link href="/dashboard" className="bif-logo" style={{ textDecoration: "none" }}>
+          beloved<span>.</span>
+        </Link>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={markAllAsSeen} className="bif-btn" style={{ fontSize: 13 }}>
             Mark all as seen
           </button>
-
-          <Link href="/dashboard" style={{ textDecoration: "none", fontWeight: 600 }}>
-            Back to dashboard
+          <Link href="/dashboard" className="bif-btn" style={{ fontSize: 13 }}>
+            ← Dashboard
           </Link>
         </div>
-      </header>
+      </nav>
 
-      {loading ? (
-        <p style={{ marginTop: 16 }}>Loading…</p>
-      ) : grouped.length === 0 ? (
-        <p style={{ marginTop: 16 }}>No found listings yet. Run a search from the dashboard.</p>
-      ) : (
-        <div style={{ marginTop: 16, display: "grid", gap: 16 }}>
-          {grouped.map(([groupTitle, groupRows]) => (
-            <details
-              key={groupTitle}
-              open
-              style={{
-                border: "1px solid #ddd",
-                borderRadius: 12,
-                padding: 12,
-              }}
-            >
-              <summary
-                style={{
-                  cursor: "pointer",
-                  listStyle: "none",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  gap: 12,
-                  fontWeight: 800,
-                  fontSize: 16,
-                  outline: "none",
-                }}
-              >
-                <span>{groupTitle}</span>
-                <span style={{ opacity: 0.7, fontWeight: 600 }}>
-                  {groupRows.length} found
-                </span>
-              </summary>
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px 60px" }}>
 
-              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                {groupRows.map((r) => {
-                  const isNew =
-                    new Date(r.matched_at).getTime() > new Date(lastViewed).getTime();
+        <div className="bif-eyebrow" style={{ marginBottom: 8 }}>Results</div>
+        <h1 style={{
+          fontFamily: "var(--bif-font-serif)",
+          fontSize: 26,
+          fontWeight: 400,
+          color: "var(--bif-text)",
+          margin: "0 0 4px",
+        }}>
+          Found listings
+        </h1>
+        <p style={{ fontSize: 13, color: "var(--bif-mauve)", margin: "0 0 24px" }}>
+          {loading ? "Loading…" : `${rows.length} listing${rows.length === 1 ? "" : "s"} across ${activeGrouped.length + pastGrouped.length} search${activeGrouped.length + pastGrouped.length === 1 ? "" : "es"}`}
+        </p>
 
-                  const price =
-                    r.price_value != null
-                      ? `${r.price_currency ?? ""} ${r.price_value}`.trim()
-                      : "";
+        <div className="bif-sunset-rule" style={{ marginBottom: 24 }} />
 
-                  const meta = [price, r.item_condition].filter(Boolean).join(" • ");
+        {loading && (
+          <p style={{ color: "var(--bif-mauve)", fontSize: 14 }}>Loading…</p>
+        )}
 
-                  return (
-                    <a
-                      key={r.id}
-                      href={r.listing_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        border: "1px solid #eee",
-                        borderRadius: 10,
-                        padding: 10,
-                        textDecoration: "none",
-                        display: "flex",
-                        gap: 12,
-                        alignItems: "center",
-                      }}
-                    >
-                      {r.image_url ? (
-                        <img
-                          src={r.image_url}
-                          alt={r.title || "Listing image"}
-                          style={{
-                            width: 72,
-                            height: 72,
-                            objectFit: "cover",
-                            borderRadius: 8,
-                            flex: "0 0 auto",
-                          }}
-                        />
-                      ) : null}
+        {!loading && activeGrouped.length === 0 && pastGrouped.length === 0 && (
+          <div style={{
+            textAlign: "center",
+            padding: "48px 24px",
+            background: "var(--bif-card)",
+            borderRadius: "var(--bif-radius-lg)",
+            border: "1px solid var(--bif-border)",
+          }}>
+            <div style={{
+              fontFamily: "var(--bif-font-serif)",
+              fontSize: 20,
+              color: "var(--bif-text)",
+              marginBottom: 8,
+            }}>
+              Nothing found yet
+            </div>
+            <p style={{ fontSize: 13, color: "var(--bif-mauve)", marginBottom: 20 }}>
+              Run a search from the dashboard to start finding your beloved items.
+            </p>
+            <Link href="/dashboard" className="bif-btn bif-btn-dark">
+              ← Go to dashboard
+            </Link>
+          </div>
+        )}
 
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <div style={{ fontWeight: 700 }}>{r.title}</div>
-                          {isNew ? (
-                            <span
-                              style={{
-                                fontSize: 12,
-                                fontWeight: 800,
-                                padding: "2px 8px",
-                                borderRadius: 999,
-                                border: "1px solid rgba(255,255,255,0.25)",
-                                background: "rgba(0,0,0,0.35)",
-                              }}
-                            >
-                              NEW
-                            </span>
-                          ) : null}
-                        </div>
+        {!loading && activeGrouped.length > 0 && (
+          <div style={{ display: "grid", gap: 12, marginBottom: pastGrouped.length > 0 ? 32 : 0 }}>
+            {activeGrouped.map(([title, groupRows]: [string, GroupedRow[]]) =>
+              renderGroup(title, groupRows, false)
+            )}
+          </div>
+        )}
 
-                        <div style={{ opacity: 0.8, marginTop: 6 }}>
-                          {r.platform} • {new Date(r.matched_at).toLocaleString()}
-                        </div>
-
-                        {meta ? (
-                          <div style={{ opacity: 0.8, marginTop: 4 }}>{meta}</div>
-                        ) : null}
-                      </div>
-                    </a>
-                  );
-                })}
+        {!loading && pastGrouped.length > 0 && (
+          <>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              margin: "8px 0 16px",
+            }}>
+              <div style={{
+                fontSize: 11,
+                letterSpacing: "1.2px",
+                textTransform: "uppercase",
+                color: "var(--bif-mauve)",
+                fontWeight: 500,
+              }}>
+                Past searches
               </div>
-            </details>
-          ))}
-        </div>
-      )}
-    </main>
+              <div style={{ flex: 1, height: "0.5px", background: "var(--bif-border)" }} />
+              <div style={{ fontSize: 12, color: "var(--bif-mauve)" }}>
+                Removed within 4 weeks
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 12 }}>
+              {pastGrouped.map(([title, groupRows]: [string, GroupedRow[]]) =>
+                renderGroup(title, groupRows, true)
+              )}
+            </div>
+          </>
+        )}
+
+      </div>
+    </div>
   );
 }

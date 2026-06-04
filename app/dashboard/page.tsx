@@ -355,9 +355,12 @@ export default function DashboardPage() {
                         const ok = confirm("Delete this tracked item?");
                         if (!ok) return;
                         const { error } = await supabase
-                          .from("tracked_items")
-                          .update({ is_active: false })
-                          .eq("id", it.id);
+                        .from("tracked_items")
+                        .update({
+                          is_active: false,
+                          deleted_at: new Date().toISOString(),
+                        })
+                        .eq("id", it.id);
                         if (error) { alert(error.message); return; }
                         setItems((prev) => prev.filter((x) => x.id !== it.id));
                       }}
