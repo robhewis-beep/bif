@@ -7,36 +7,16 @@ import { supabase } from "../../lib/supabaseClient";
 
 type TrackedItem = {
   id: string;
-  brand: string;
-  item_name: string;
-  category: string;
-  size: string;
+  brand: string | null;
+  item_name: string | null;
+  category: string | null;
+  size: string | null;
   max_price: number | null;
   currency: string | null;
   search_frequency: string;
   is_active: boolean;
   is_paused: boolean;
   reference_image_url: string | null;
-};
-
-const btn: React.CSSProperties = {
-  padding: "8px 14px",
-  borderRadius: 8,
-  border: "1px solid #ddd",
-  background: "#fff",
-  color: "#111",
-  fontWeight: 600,
-  cursor: "pointer",
-  fontSize: 14,
-  textDecoration: "none",
-  display: "inline-block",
-};
-
-const btnDark: React.CSSProperties = {
-  ...btn,
-  background: "#111",
-  color: "#fff",
-  border: "1px solid #111",
 };
 
 export default function DashboardPage() {
@@ -46,6 +26,7 @@ export default function DashboardPage() {
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -56,6 +37,8 @@ export default function DashboardPage() {
       router.push("/login");
       return;
     }
+
+    setUserEmail(sessionData.session.user.email ?? null);
 
     const { data, error } = await supabase
       .from("tracked_items")
@@ -98,7 +81,7 @@ export default function DashboardPage() {
 
       await load();
       setLastResult(
-        `Done — searched ${out.searched ?? 0} items, found ${out.upserted ?? 0} listings, emailed ${out.emailed ?? 0} users.`
+        `Searched ${out.searched ?? 0} items · ${out.upserted ?? 0} listings found · ${out.emailed ?? 0} emails sent`
       );
     } catch (err: any) {
       setLastResult(err?.message ?? "Something went wrong.");
@@ -112,75 +95,247 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const firstName = userEmail?.split("@")[0] ?? "there";
+
   return (
-    <main style={{ maxWidth: 800, margin: "40px auto", padding: 16 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>Dashboard</h1>
+    <div style={{ minHeight: "100vh", background: "var(--bif-bg)", fontFamily: "var(--bif-font-sans)" }}>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <Link href="/add" style={btn}>+ Add item</Link>
-          <Link href="/found" style={btnDark}>Found listings</Link>
-          <button onClick={logout} style={btn}>Log out</button>
+      {/* Nav */}
+      <nav style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "16px 28px",
+        background: "#fff",
+        borderBottom: "1px solid var(--bif-border)",
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+      }}>
+        <div className="bif-logo">
+          beloved<span>.</span>
         </div>
-      </header>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Link href="/add" className="bif-btn">
+            + Add item
+          </Link>
+          <Link href="/found" className="bif-btn bif-btn-dark">
+            Found listings
+          </Link>
+          <button onClick={logout} className="bif-btn">
+            Log out
+          </button>
+        </div>
+      </nav>
 
-      {/* Run search button */}
-      <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <button
-          onClick={runSearchAndEmail}
-          disabled={searching}
-          style={{
-            ...btnDark,
-            opacity: searching ? 0.6 : 1,
-            padding: "10px 18px",
-          }}
-        >
-          {searching ? "Searching…" : "Run search now"}
-        </button>
-        {lastResult && (
-          <span style={{ fontSize: 13, opacity: 0.7 }}>{lastResult}</span>
-        )}
+      {/* Hero band */}
+      <div style={{
+        padding: "28px 28px 24px",
+        background: "#fff",
+        borderBottom: "1px solid var(--bif-border)",
+      }}>
+        <div className="bif-eyebrow" style={{ marginBottom: 6 }}>Your searches</div>
+        <h1 style={{
+          fontFamily: "var(--bif-font-serif)",
+          fontSize: 26,
+          fontWeight: 400,
+          color: "var(--bif-text)",
+          margin: "0 0 4px",
+        }}>
+          Welcome back, {firstName}.
+        </h1>
+        <p style={{ fontSize: 13, color: "var(--bif-mauve)", margin: "0 0 20px" }}>
+          {loading ? "Loading your items…" : `${items.length} item${items.length === 1 ? "" : "s"} being tracked`}
+        </p>
+
+        {/* Run search row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={runSearchAndEmail}
+            disabled={searching}
+            className="bif-btn bif-btn-dark"
+            style={{ padding: "10px 20px", opacity: searching ? 0.6 : 1 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            {searching ? "Searching…" : "Run search now"}
+          </button>
+
+          {lastResult && (
+            <span style={{
+              fontSize: 12,
+              color: "var(--bif-mauve)",
+              padding: "6px 14px",
+              background: "var(--bif-bg)",
+              borderRadius: 20,
+              border: "1px solid var(--bif-border)",
+            }}>
+              {lastResult}
+            </span>
+          )}
+        </div>
       </div>
 
-      {loading && <p style={{ marginTop: 16 }}>Loading…</p>}
-      {error && <p style={{ marginTop: 16, color: "crimson" }}>{error}</p>}
+      {/* Sunset rule */}
+      <div className="bif-sunset-rule" style={{ margin: "0 28px" }} />
 
-      {!loading && !error && (
-        <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-          {items.length === 0 ? (
-            <p>No tracked items yet — click "+ Add item" to get started.</p>
-          ) : (
-            items.map((it) => (
+      {/* Items section */}
+      <div style={{ padding: "0 28px 40px" }}>
+
+        <div style={{
+          fontSize: 11,
+          letterSpacing: "1.2px",
+          textTransform: "uppercase",
+          color: "var(--bif-mauve)",
+          padding: "20px 0 12px",
+          fontWeight: 500,
+        }}>
+          Tracked items
+        </div>
+
+        {loading && (
+          <p style={{ color: "var(--bif-mauve)", fontSize: 14 }}>Loading…</p>
+        )}
+
+        {error && (
+          <p style={{ color: "crimson", fontSize: 14 }}>{error}</p>
+        )}
+
+        {!loading && !error && items.length === 0 && (
+          <div style={{
+            textAlign: "center",
+            padding: "48px 24px",
+            background: "#fff",
+            borderRadius: "var(--bif-radius-lg)",
+            border: "1px solid var(--bif-border)",
+          }}>
+            <div style={{
+              fontFamily: "var(--bif-font-serif)",
+              fontSize: 20,
+              color: "var(--bif-text)",
+              marginBottom: 8,
+            }}>
+              Nothing tracked yet
+            </div>
+            <p style={{ fontSize: 13, color: "var(--bif-mauve)", marginBottom: 20 }}>
+              Add your first beloved item and we'll search for it every day.
+            </p>
+            <Link href="/add" className="bif-btn bif-btn-dark">
+              + Add your first item
+            </Link>
+          </div>
+        )}
+
+        {!loading && !error && items.length > 0 && (
+          <div style={{ display: "grid", gap: 10 }}>
+            {items.map((it) => (
               <div
                 key={it.id}
-                style={{ border: "1px solid #ddd", borderRadius: 12, padding: 14, display: "flex", gap: 14, alignItems: "flex-start" }}
+                style={{
+                  background: "#fff",
+                  border: "1px solid var(--bif-border)",
+                  borderLeft: `3px solid ${it.is_paused ? "var(--bif-border)" : "var(--bif-amber)"}`,
+                  borderRadius: "var(--bif-radius-lg)",
+                  padding: "14px 16px",
+                  display: "flex",
+                  gap: 14,
+                  alignItems: "flex-start",
+                  position: "relative",
+                }}
               >
-                {it.reference_image_url && (
+                {/* Thumbnail */}
+                {it.reference_image_url ? (
                   <img
                     src={it.reference_image_url}
-                    alt={`${it.brand} ${it.item_name}`}
-                    style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 10, border: "1px solid #ddd", flexShrink: 0 }}
+                    alt={`${it.brand ?? ""} ${it.item_name ?? ""}`}
+                    style={{
+                      width: 64,
+                      height: 64,
+                      objectFit: "cover",
+                      borderRadius: 10,
+                      border: "1px solid var(--bif-border)",
+                      flexShrink: 0,
+                    }}
                   />
+                ) : (
+                  <div style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 10,
+                    border: "1px solid var(--bif-border)",
+                    background: "var(--bif-bg)",
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 24,
+                  }}>
+                    🧥
+                  </div>
                 )}
 
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800, fontSize: 15 }}>
-                    {it.brand} — {it.item_name ?? it.category}
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 10,
+                    letterSpacing: "1.2px",
+                    textTransform: "uppercase",
+                    color: "var(--bif-amber)",
+                    fontWeight: 500,
+                    marginBottom: 2,
+                  }}>
+                    {it.brand ?? "No brand"}
                   </div>
 
-                  <div style={{ opacity: 0.7, marginTop: 4, fontSize: 13 }}>
-                    {[
-                      it.category,
-                      it.size && `Size ${it.size}`,
-                      it.max_price && `Up to ${it.currency ?? "GBP"} ${it.max_price}`,
-                      it.search_frequency,
-                      it.is_paused ? "⏸ Paused" : "▶ Active",
-                    ].filter(Boolean).join(" · ")}
+                  <div style={{
+                    fontFamily: "var(--bif-font-serif)",
+                    fontSize: 15,
+                    color: "var(--bif-text)",
+                    marginBottom: 5,
+                  }}>
+                    {it.item_name ?? it.category ?? "Tracked item"}
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                  <div style={{
+                    fontSize: 12,
+                    color: "var(--bif-mauve)",
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    marginBottom: 10,
+                  }}>
+                    {it.category && <span>{it.category}</span>}
+                    {it.size && <><span style={{ opacity: 0.4 }}>·</span><span>Size {it.size}</span></>}
+                    {it.max_price && <><span style={{ opacity: 0.4 }}>·</span><span>Up to £{it.max_price}</span></>}
+                    <span style={{ opacity: 0.4 }}>·</span>
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 500,
+                      padding: "2px 8px",
+                      borderRadius: 20,
+                      background: it.is_paused ? "var(--bif-bg)" : "#EAF3DE",
+                      color: it.is_paused ? "var(--bif-mauve)" : "#3B6D11",
+                    }}>
+                      {it.is_paused ? "Paused" : "Active"}
+                    </span>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <Link
+                      href={`/found?tracked_item_id=${it.id}`}
+                      className="bif-btn"
+                      style={{ fontSize: 12, padding: "5px 11px" }}
+                    >
+                      View found
+                    </Link>
+
                     <button
                       type="button"
+                      className="bif-btn"
+                      style={{ fontSize: 12, padding: "5px 11px" }}
                       onClick={async () => {
                         await supabase
                           .from("tracked_items")
@@ -188,20 +343,14 @@ export default function DashboardPage() {
                           .eq("id", it.id);
                         await load();
                       }}
-                      style={btn}
                     >
                       {it.is_paused ? "Resume" : "Pause"}
                     </button>
 
-                    <Link
-                      href={`/found?tracked_item_id=${it.id}`}
-                      style={btn}
-                    >
-                      View found
-                    </Link>
-
                     <button
                       type="button"
+                      className="bif-btn bif-btn-danger"
+                      style={{ fontSize: 12, padding: "5px 11px" }}
                       onClick={async () => {
                         const ok = confirm("Delete this tracked item?");
                         if (!ok) return;
@@ -212,17 +361,16 @@ export default function DashboardPage() {
                         if (error) { alert(error.message); return; }
                         setItems((prev) => prev.filter((x) => x.id !== it.id));
                       }}
-                      style={{ ...btn, color: "crimson", borderColor: "crimson" }}
                     >
                       Delete
                     </button>
                   </div>
                 </div>
               </div>
-            ))
-          )}
-        </div>
-      )}
-    </main>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
