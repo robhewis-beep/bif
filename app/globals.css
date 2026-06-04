@@ -30,7 +30,7 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --bif-bg:         #28272F;
-    --bif-card:       #38373F;
+    --bif-card:       #32313A;
     --bif-border:     rgba(255, 255, 255, 0.09);
     --bif-text:       #F0EEE8;
     --bif-text-muted: #9B8FA0;
