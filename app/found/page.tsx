@@ -291,29 +291,64 @@ export default function FoundPage() {
       new Date(r.matched_at).getTime() > new Date(lastViewed).getTime()
     ).length;
 
+    const ti = groupRows[0]?.tracked_item;
+    const representativeImage = groupRows.find((r) => r.image_url)?.image_url ?? null;
+
     return (
       <details
         key={groupTitle}
-        open={!isPast}
+        open={false}
         style={{
           background: "var(--bif-card)",
           border: "1px solid var(--bif-border)",
           borderLeft: `3px solid ${isPast ? "var(--bif-border)" : "var(--bif-amber)"}`,
           borderRadius: "var(--bif-radius-lg)",
-          padding: "14px 16px",
           opacity: isPast ? 0.75 : 1,
+          overflow: "hidden",
         }}
       >
         <summary style={{
           cursor: "pointer",
           listStyle: "none",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
           outline: "none",
+          padding: "14px 16px",
+          display: "flex",
+          gap: 14,
+          alignItems: "center",
         }}>
-          <div>
+          {/* Thumbnail */}
+          {representativeImage ? (
+            <img
+              src={representativeImage}
+              alt={groupTitle}
+              style={{
+                width: 56,
+                height: 56,
+                objectFit: "cover",
+                borderRadius: 8,
+                border: "1px solid var(--bif-border)",
+                flexShrink: 0,
+              }}
+            />
+          ) : (
+            <div style={{
+              width: 56,
+              height: 56,
+              borderRadius: 8,
+              border: "1px solid var(--bif-border)",
+              background: "var(--bif-bg)",
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+            }}>
+              🧥
+            </div>
+          )}
+
+          {/* Item info */}
+          <div style={{ flex: 1, minWidth: 0 }}>
             {isPast && (
               <div style={{
                 fontSize: 10,
@@ -327,39 +362,78 @@ export default function FoundPage() {
               </div>
             )}
             <div style={{
+              fontSize: 10,
+              letterSpacing: "1.2px",
+              textTransform: "uppercase",
+              color: "var(--bif-amber)",
+              fontWeight: 500,
+              marginBottom: 2,
+            }}>
+              {ti?.brand ?? "Unknown"}
+            </div>
+            <div style={{
               fontFamily: "var(--bif-font-serif)",
               fontSize: 15,
               color: "var(--bif-text)",
+              marginBottom: 4,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}>
-              {groupTitle}
+              {ti?.item_name ?? "Search item"}
+            </div>
+            <div style={{
+              fontSize: 12,
+              color: "var(--bif-mauve)",
+              display: "flex",
+              gap: 6,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}>
+              {ti?.size && <span>Size {ti.size}</span>}
+              {ti?.size && <span style={{ opacity: 0.4 }}>·</span>}
+              <span>{groupRows.length} listing{groupRows.length === 1 ? "" : "s"}</span>
+              {newCount > 0 && !isPast && (
+                <>
+                  <span style={{ opacity: 0.4 }}>·</span>
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 500,
+                    padding: "2px 8px",
+                    borderRadius: 20,
+                    background: "var(--bif-amber)",
+                    color: "#fff",
+                  }}>
+                    {newCount} new
+                  </span>
+                </>
+              )}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-            {newCount > 0 && !isPast && (
-              <span style={{
-                fontSize: 10,
-                fontWeight: 500,
-                padding: "2px 9px",
-                borderRadius: 20,
-                background: "var(--bif-amber)",
-                color: "#fff",
-              }}>
-                {newCount} new
-              </span>
-            )}
-            <span style={{ fontSize: 12, color: "var(--bif-mauve)" }}>
-              {groupRows.length} found
-            </span>
+
+          {/* Chevron */}
+          <div style={{
+            fontSize: 12,
+            color: "var(--bif-mauve)",
+            flexShrink: 0,
+          }}>
+            ▼
           </div>
         </summary>
 
-        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+        {/* Expanded listings */}
+        <div style={{
+          borderTop: "1px solid var(--bif-border)",
+          padding: "12px 16px",
+          display: "grid",
+          gap: 8,
+        }}>
           {groupRows.map((r) => renderListingCard(r))}
         </div>
 
         {isPast && (
           <div style={{
-            marginTop: 12,
+            margin: "0 16px 12px",
             fontSize: 12,
             color: "var(--bif-mauve)",
             padding: "8px 12px",
