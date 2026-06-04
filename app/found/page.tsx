@@ -395,32 +395,43 @@ export default function FoundPage() {
           beloved<span>.</span>
         </Link>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button onClick={markAllAsSeen} className="bif-btn" style={{ fontSize: 13 }}>
-            Mark all as seen
-          </button>
           <Link href="/dashboard" className="bif-btn" style={{ fontSize: 13 }}>
             ← Dashboard
           </Link>
         </div>
       </nav>
 
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "32px 24px 60px" }}>
+      {/* Hero band */}
+      <div style={{
+        padding: "28px 28px 24px",
+        background: "var(--bif-bg)",
+        borderBottom: "1px solid var(--bif-border)",
+      }}>
+        <div style={{ maxWidth: 860, margin: "0 auto" }}>
+          <div className="bif-eyebrow" style={{ marginBottom: 8 }}>Results</div>
+          <h1 style={{
+            fontFamily: "var(--bif-font-serif)",
+            fontSize: 26,
+            fontWeight: 400,
+            color: "var(--bif-text)",
+            margin: "0 0 4px",
+          }}>
+            Found listings
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--bif-mauve)", margin: "0 0 16px" }}>
+            {loading ? "Loading…" : `${rows.length} listing${rows.length === 1 ? "" : "s"} across ${activeGrouped.length + pastGrouped.length} search${activeGrouped.length + pastGrouped.length === 1 ? "" : "es"}`}
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={markAllAsSeen} className="bif-btn" style={{ fontSize: 13 }}>
+              Mark all as seen
+            </button>
+          </div>
+        </div>
+      </div>
 
-        <div className="bif-eyebrow" style={{ marginBottom: 8 }}>Results</div>
-        <h1 style={{
-          fontFamily: "var(--bif-font-serif)",
-          fontSize: 26,
-          fontWeight: 400,
-          color: "var(--bif-text)",
-          margin: "0 0 4px",
-        }}>
-          Found listings
-        </h1>
-        <p style={{ fontSize: 13, color: "var(--bif-mauve)", margin: "0 0 24px" }}>
-          {loading ? "Loading…" : `${rows.length} listing${rows.length === 1 ? "" : "s"} across ${activeGrouped.length + pastGrouped.length} search${activeGrouped.length + pastGrouped.length === 1 ? "" : "es"}`}
-        </p>
+      <div className="bif-sunset-rule" />
 
-        <div className="bif-sunset-rule" style={{ marginBottom: 24 }} />
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "24px 24px 60px" }}>
 
         {loading && (
           <p style={{ color: "var(--bif-mauve)", fontSize: 14 }}>Loading…</p>
