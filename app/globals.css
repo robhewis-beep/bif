@@ -1,26 +1,180 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500&display=swap');
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Beloved. colour palette */
+  --bif-navy:       #2C2B3E;
+  --bif-amber:      #E8824A;
+  --bif-mauve:      #8B7B8B;
+  --bif-yellow:     #F2E090;
+  --bif-bg:         #FAFAF8;
+  --bif-card:       #FFFFFF;
+  --bif-border:     rgba(0, 0, 0, 0.08);
+  --bif-text:       #1C1C1A;
+  --bif-text-muted: #8B7B8B;
+
+  /* Sunset gradient */
+  --bif-gradient-login: linear-gradient(175deg, #2C2B3E 0%, #8B7B8B 35%, #E8824A 72%, #F2E090 100%);
+  --bif-gradient-rule:  linear-gradient(90deg, #2C2B3E, #8B7B8B, #E8824A, #F2E090);
+
+  /* Typography */
+  --bif-font-serif: 'Playfair Display', Georgia, serif;
+  --bif-font-sans:  'Inter', system-ui, sans-serif;
+
+  /* Spacing */
+  --bif-radius-sm:  6px;
+  --bif-radius-md:  8px;
+  --bif-radius-lg:  12px;
+  --bif-radius-xl:  14px;
+
+  --background: var(--bif-bg);
+  --foreground: var(--bif-text);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--bif-font-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+* { box-sizing: border-box; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bif-bg);
+  color: var(--bif-text);
+  font-family: var(--bif-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Reusable utility classes used across all pages */
+
+.bif-logo {
+  font-family: var(--bif-font-serif);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--bif-text);
+  letter-spacing: -0.3px;
+}
+.bif-logo span { color: var(--bif-amber); }
+
+.bif-serif {
+  font-family: var(--bif-font-serif);
+  font-weight: 400;
+}
+
+.bif-eyebrow {
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--bif-amber);
+  font-weight: 500;
+}
+
+.bif-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--bif-radius-md);
+  border: 1px solid var(--bif-border);
+  background: var(--bif-card);
+  color: var(--bif-text);
+  font-family: var(--bif-font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+.bif-btn:hover { opacity: 0.8; }
+.bif-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.bif-btn-dark {
+  background: var(--bif-navy);
+  color: var(--bif-yellow);
+  border-color: var(--bif-navy);
+}
+
+.bif-btn-danger {
+  color: #A32D2D;
+  border-color: #F09595;
+}
+
+.bif-card {
+  background: var(--bif-card);
+  border: 1px solid var(--bif-border);
+  border-radius: var(--bif-radius-lg);
+  padding: 16px;
+}
+
+.bif-card-active {
+  border-left: 3px solid var(--bif-amber);
+}
+
+.bif-card-paused {
+  border-left: 3px solid var(--bif-border);
+}
+
+.bif-sunset-rule {
+  height: 3px;
+  background: var(--bif-gradient-rule);
+  opacity: 0.35;
+  border-radius: 2px;
+}
+
+.bif-badge-new {
+  background: var(--bif-amber);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+
+.bif-badge-active {
+  background: #EAF3DE;
+  color: #3B6D11;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+.bif-badge-paused {
+  background: #f0f0ee;
+  color: var(--bif-mauve);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+.bif-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--bif-radius-md);
+  border: 1px solid var(--bif-border);
+  background: var(--bif-card);
+  color: var(--bif-text);
+  font-family: var(--bif-font-sans);
+  font-size: 14px;
+}
+.bif-input:focus {
+  outline: none;
+  border-color: var(--bif-amber);
+}
+
+.bif-label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--bif-text);
+}
+
+.bif-label-hint {
+  font-size: 12px;
+  color: var(--bif-mauve);
+  font-weight: 400;
 }
