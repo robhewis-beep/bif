@@ -31,6 +31,7 @@ export default function AddPage() {
   const [isPaused, setIsPaused] = useState(false);
   const [imageOnlySearch, setImageOnlySearch] = useState(false);
   const [suggestionStatus, setSuggestionStatus] = useState<string | null>(null);
+  const [platforms, setPlatforms] = useState<string[]>(["ebay"]);
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -163,6 +164,7 @@ export default function AddPage() {
         is_active: true,
         reference_image_url: referenceImageUrl,
         image_only_search: imageOnlySearch,
+        platforms: platforms,
       });
 
       if (error) throw error;
@@ -480,6 +482,42 @@ export default function AddPage() {
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(e.target.value === "" ? "" : Number(e.target.value))}
               />
+            </label>
+            {/* PLATFORMS */}
+            <label style={labelStyle}>
+              Search platforms
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
+                {["ebay", "etsy"].map((p) => (
+                  <label key={p} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 13,
+                    fontWeight: 400,
+                    cursor: "pointer",
+                    padding: "6px 12px",
+                    borderRadius: "var(--bif-radius-md)",
+                    border: "1px solid var(--bif-border)",
+                    background: "var(--bif-bg)",
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={platforms.includes(p)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setPlatforms((prev) => [...prev, p]);
+                        } else {
+                          setPlatforms((prev) => prev.filter((x) => x !== p));
+                        }
+                      }}
+                    />
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </label>
+                ))}
+              </div>
+              <span style={{ fontSize: 12, color: "var(--bif-mauve)", fontWeight: 400 }}>
+                Select which platforms to search
+              </span>
             </label>
 
             {/* FREQUENCY */}

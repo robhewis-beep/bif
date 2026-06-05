@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-type Platform = "ebay" | "vinted" | "depop";
+type Platform = "ebay" | "vinted" | "depop" | "etsy";
 
 type Listing = {
   platform: Platform;
@@ -145,6 +145,17 @@ function detectGender(item: TrackedItem): "women" | "men" | null {
   return null;
 }
 
+function getEbayMarketplace(currency: string | null): string {
+  switch ((currency ?? "GBP").toUpperCase()) {
+    case "USD": return "EBAY_US";
+    case "EUR": return "EBAY_DE";
+    case "AUD": return "EBAY_AU";
+    case "CAD": return "EBAY_CA";
+    case "GBP":
+    default:    return "EBAY_GB";
+  }
+}
+
 async function ebaySearch(query: string, item?: TrackedItem): Promise<Listing[]> {
   const token = await getEbayAppToken();
 
@@ -190,7 +201,7 @@ async function ebaySearch(query: string, item?: TrackedItem): Promise<Listing[]>
   const resp = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
-      "X-EBAY-C-MARKETPLACE-ID": "EBAY_GB",
+      "X-EBAY-C-MARKETPLACE-ID": getEbayMarketplace(item?.currency ?? "GBP"),
       Accept: "application/json",
     },
   });
@@ -236,7 +247,66 @@ async function ebaySearchByImage(imageUrl: string): Promise<Listing[]> {
   const data = await resp.json();
   return mapEbayItems(data.itemSummaries ?? data.itemSummariesResults ?? []);
 }
+async function etsySearch(query: string, item?: TrackedItem): Promise<Listing[]> {
+  const apiKey = process.env.ETSY_API_KEY;
+  if (!apiKey) {
+    console.log("[etsySearch] No ETSY_API_KEY set, skipping");
+    return [];
+  }
 
+  const params = new URLSearchParams({
+    keywords: query,
+    limit: "25",
+    sort_on: "score",
+    includes: "Images,MainImage",
+  });
+
+  if (item?.max_price) {
+    params.set("max_price", String(item.max_price));
+  }
+
+  const resp = await fetch(
+    `https://openapi.etsy.com/v3/application/listings/active?${params.toString()}`,
+    {
+      headers: {
+        "x-api-key": apiKey,
+        Accept: "application/json",
+      },
+    }
+  );
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Etsy search error: ${resp.status} ${text}`);
+  }
+
+  const data = await resp.json();
+  const results = data?.results ?? [];
+
+  return results.map((listing: any) => {
+    const image =
+      listing.MainImage?.url_570xN ??
+      listing.Images?.[0]?.url_570xN ??
+      null;
+
+    const price = listing.price?.amount != null && listing.price?.divisor != null
+      ? listing.price.amount / listing.price.divisor
+      : null;
+
+    const currency = listing.price?.currency_code ?? null;
+
+    return {
+      platform: "etsy" as const,
+      title: String(listing.title ?? "Etsy listing"),
+      url: String(listing.url ?? ""),
+      image_url: image ? String(image) : null,
+      price_value: price,
+      price_currency: currency,
+      item_condition: null,
+      listing_brand: null,
+    };
+  }).filter((l: Listing) => l.url?.includes("etsy.com"));
+}
 function dedupeListings(listings: Listing[]) {
   const map = new Map<string, Listing>();
 
@@ -284,7 +354,7 @@ function filterListings(listings: Listing[], item: TrackedItem): Listing[] {
     const title = l.title.toLowerCase();
 
     // Remove non-GBP listings (e.g. USD results from eBay US)
-    if (l.price_currency && l.price_currency.toUpperCase() !== expectedCurrency) {
+    if (l.platform !== "etsy" && l.price_currency && l.price_currency.toUpperCase() !== expectedCurrency) {
       console.log(`[filterListings] Removed non-${expectedCurrency} listing: ${l.title} (${l.price_currency})`);
       return false;
     }
@@ -403,6 +473,20 @@ async function searchAllPlatforms(item: TrackedItem): Promise<Listing[]> {
 
   if (platforms.includes("ebay")) {
     results.push(...(await searchEbayPlatform(item)));
+  }
+
+  if (platforms.includes("etsy")) {
+    try {
+      const etsyResults = await etsySearch(
+        item.search_query?.trim() ||
+        `${item.brand ?? ""} ${item.category ?? ""} ${item.item_name ?? ""}`.trim(),
+        item
+      );
+      console.log(`[runSearchEngine] Etsy returned ${etsyResults.length} results`);
+      results.push(...etsyResults);
+    } catch (err) {
+      console.error("[runSearchEngine] Etsy search failed", err);
+    }
   }
 
   if (platforms.includes("vinted")) {
