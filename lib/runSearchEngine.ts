@@ -567,6 +567,7 @@ async function googleSiteSearch(
 
   const data = await resp.json();
   const organicResults = data?.organic_results ?? [];
+  console.log("[serpapi] sample result:", JSON.stringify(organicResults[0] ?? {}, null, 2));
 
   return organicResults
     .map((result: any) => {
