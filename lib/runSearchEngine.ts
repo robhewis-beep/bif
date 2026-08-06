@@ -590,8 +590,6 @@ async function googleSiteSearch(
     );
 }
 
-  const platform = site === "vinted.co.uk" ? "vinted_google" : "depop_google";
-}
 
 async function ebayGetByLegacyId(legacyId: string): Promise<{
   title: string | null;
