@@ -567,17 +567,14 @@ async function googleSiteSearch(
 
   const data = await resp.json();
   const organicResults = data?.organic_results ?? [];
-  console.log("[serpapi] sample result:", JSON.stringify(organicResults[0] ?? {}, null, 2));
 
   return organicResults
     .map((result: any) => {
-      // Try to extract price from snippet
+      // Extract price from rich_snippet first, then fall back to snippet text
+      const richPrice = result.rich_snippet?.bottom?.detected_extensions?.price ?? null;
       const snippet = result.snippet ?? "";
-      const priceMatch = snippet.match(/£\s?(\d+(?:\.\d{2})?)/);
-      const priceValue = priceMatch ? parseFloat(priceMatch[1]) : null;
-
-      // Get thumbnail image if available
-      const image = result.thumbnail ?? null;
+      const snippetPriceMatch = snippet.match(/£\s?(\d+(?:\.\d{2})?)/);
+      const priceValue = richPrice ?? (snippetPriceMatch ? parseFloat(snippetPriceMatch[1]) : null);
 
       return {
         platform: platform as Platform,
@@ -585,23 +582,28 @@ async function googleSiteSearch(
           .replace(/\s*[-|].*$/, "")
           .trim(),
         url: String(result.link ?? ""),
-        image_url: image ? String(image) : null,
-        price_value: priceValue,
+        image_url: null,
+        price_value: priceValue ? Number(priceValue) : null,
         price_currency: priceValue ? "GBP" : null,
         item_condition: null,
         listing_brand: null,
       };
     })
-    .filter((l: Listing) =>
-      l.url.includes(site) &&
-      !l.url.includes("/profile/") &&
-      !l.url.includes("/brand/") &&
-      !l.url.includes("/catalog/") &&
-      !l.url.includes("/members/")
-    );
+    .filter((l: Listing) => {
+      if (!l.url.includes(site)) return false;
+      // Vinted — only individual item listings
+      if (site === "vinted.co.uk") {
+        return l.url.includes("/items/") || l.url.match(/\/\d{5,}/) !== null;
+      }
+      // Depop — only product pages
+      if (site === "depop.com") {
+        return l.url.includes("/products/");
+      }
+      return true;
+    });
+
+
 }
-
-
 async function ebayGetByLegacyId(legacyId: string): Promise<{
   title: string | null;
   image: string | null;
