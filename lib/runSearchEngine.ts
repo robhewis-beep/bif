@@ -328,7 +328,7 @@ function dedupeListings(listings: Listing[]) {
     });
   }
 
-  return Array.from(map.values()).slice(0, 20);
+  return Array.from(map.values()).slice(0, 50);
 }
 const FEMALE_WORDS = [
   "women", "womens", "woman", "ladies", "lady", "girls", "girl",
@@ -520,7 +520,17 @@ if (platforms.includes("vinted")) {
     }
   }
 
-  return dedupeListings(results);
+  // Balance results across platforms — max 15 per platform
+const byPlatform = new Map<string, Listing[]>();
+for (const r of results) {
+  const key = r.platform;
+  if (!byPlatform.has(key)) byPlatform.set(key, []);
+  const bucket = byPlatform.get(key)!;
+  if (bucket.length < 15) bucket.push(r);
+}
+
+const balanced = Array.from(byPlatform.values()).flat();
+return dedupeListings(balanced);
 }
 async function googleSiteSearch(
   query: string,
