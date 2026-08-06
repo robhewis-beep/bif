@@ -1,7 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-type Platform = "ebay" | "vinted" | "depop" | "etsy";
-
+type Platform = "ebay" | "vinted" | "depop" | "etsy" | "vinted_google" | "depop_google";
 type Listing = {
   platform: Platform;
   title: string;
@@ -354,7 +353,13 @@ function filterListings(listings: Listing[], item: TrackedItem): Listing[] {
     const title = l.title.toLowerCase();
 
     // Remove non-GBP listings (e.g. USD results from eBay US)
-    if (l.platform !== "etsy" && l.price_currency && l.price_currency.toUpperCase() !== expectedCurrency) {
+    if (
+      l.platform !== "etsy" &&
+      l.platform !== "vinted_google" &&
+      l.platform !== "depop_google" &&
+      l.price_currency &&
+      l.price_currency.toUpperCase() !== expectedCurrency
+    ) {
       console.log(`[filterListings] Removed non-${expectedCurrency} listing: ${l.title} (${l.price_currency})`);
       return false;
     }
@@ -489,15 +494,101 @@ async function searchAllPlatforms(item: TrackedItem): Promise<Listing[]> {
     }
   }
 
-  if (platforms.includes("vinted")) {
-    console.log("[runSearchEngine] Vinted selected but not implemented yet");
+if (platforms.includes("vinted")) {
+    try {
+      const textQuery =
+        item.search_query?.trim() ||
+        `${item.brand ?? ""} ${item.category ?? ""} ${item.item_name ?? ""}`.trim();
+      const vintedResults = await googleSiteSearch(textQuery, "vinted.co.uk", item);
+      console.log(`[runSearchEngine] Vinted (Google) returned ${vintedResults.length} results`);
+      results.push(...vintedResults);
+    } catch (err) {
+      console.error("[runSearchEngine] Vinted Google search failed", err);
+    }
   }
 
   if (platforms.includes("depop")) {
-    console.log("[runSearchEngine] Depop selected but not implemented yet");
+    try {
+      const textQuery =
+        item.search_query?.trim() ||
+        `${item.brand ?? ""} ${item.category ?? ""} ${item.item_name ?? ""}`.trim();
+      const depopResults = await googleSiteSearch(textQuery, "depop.com", item);
+      console.log(`[runSearchEngine] Depop (Google) returned ${depopResults.length} results`);
+      results.push(...depopResults);
+    } catch (err) {
+      console.error("[runSearchEngine] Depop Google search failed", err);
+    }
   }
 
   return dedupeListings(results);
+}
+async function googleSiteSearch(
+  query: string,
+  site: "vinted.co.uk" | "depop.com",
+  item?: TrackedItem
+): Promise<Listing[]> {
+  const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
+  const cx = process.env.GOOGLE_SEARCH_ENGINE_ID;
+
+  if (!apiKey || !cx) {
+    console.log("[googleSiteSearch] Missing Google API credentials, skipping");
+    return [];
+  }
+
+  const platform = site === "vinted.co.uk" ? "vinted_google" : "depop_google";
+
+  // Build a strong query including site restriction
+  const siteQuery = `site:${site} ${query}`;
+
+  const params = new URLSearchParams({
+    key: apiKey,
+    cx,
+    q: siteQuery,
+    num: "10",
+  });
+
+  const resp = await fetch(
+    `https://www.googleapis.com/customsearch/v1?${params.toString()}`
+  );
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Google search error: ${resp.status} ${text}`);
+  }
+
+  const data = await resp.json();
+  const items = data?.items ?? [];
+
+  return items
+    .map((result: any) => {
+      // Extract price from snippet if present
+      const snippet = result.snippet ?? "";
+      const priceMatch = snippet.match(/£\s?(\d+(?:\.\d{2})?)/);
+      const priceValue = priceMatch ? parseFloat(priceMatch[1]) : null;
+
+      // Extract image from page metadata if available
+      const image =
+        result.pagemap?.cse_image?.[0]?.src ??
+        result.pagemap?.cse_thumbnail?.[0]?.src ??
+        null;
+
+      return {
+        platform: platform as Platform,
+        title: String(result.title ?? "").replace(/\s*[-|].*$/, "").trim(),
+        url: String(result.link ?? ""),
+        image_url: image ? String(image) : null,
+        price_value: priceValue,
+        price_currency: priceValue ? "GBP" : null,
+        item_condition: null,
+        listing_brand: null,
+      };
+    })
+    .filter((l: Listing) =>
+      l.url.includes(site) &&
+      !l.url.includes("/profile/") &&
+      !l.url.includes("/brand/") &&
+      !l.url.includes("/catalog/")
+    );
 }
 
 async function ebayGetByLegacyId(legacyId: string): Promise<{

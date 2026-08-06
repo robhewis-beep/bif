@@ -256,7 +256,11 @@ export default function FoundPage() {
             gap: 8,
             flexWrap: "wrap",
           }}>
-            <span style={{ textTransform: "capitalize" }}>{r.platform}</span>
+            <span style={{ textTransform: "capitalize" }}>
+              {r.platform === "vinted_google" ? "Vinted" :
+               r.platform === "depop_google" ? "Depop" :
+               r.platform}
+            </span>
             <span style={{ opacity: 0.4 }}>·</span>
             <span>{new Date(r.matched_at).toLocaleDateString("en-GB", {
               day: "numeric", month: "short", year: "numeric",

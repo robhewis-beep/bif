@@ -487,7 +487,7 @@ export default function AddPage() {
             <label style={labelStyle}>
               Search platforms
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
-                {["ebay", "etsy"].map((p) => (
+                {["ebay", "etsy", "vinted", "depop"].map((p) => (
                   <label key={p} style={{
                     display: "flex",
                     alignItems: "center",
