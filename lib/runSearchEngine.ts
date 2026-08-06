@@ -527,13 +527,68 @@ async function googleSiteSearch(
   site: "vinted.co.uk" | "depop.com",
   item?: TrackedItem
 ): Promise<Listing[]> {
-  const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
-  const cx = process.env.GOOGLE_SEARCH_ENGINE_ID;
+  const apiKey = process.env.SERPAPI_KEY;
 
-  if (!apiKey || !cx) {
-    console.log("[googleSiteSearch] Missing Google API credentials, skipping");
+  if (!apiKey) {
+    console.log("[googleSiteSearch] Missing SERPAPI_KEY, skipping");
     return [];
   }
+
+  const platform = site === "vinted.co.uk" ? "vinted_google" : "depop_google";
+  const siteQuery = `site:${site} ${query}`;
+
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    engine: "google",
+    q: siteQuery,
+    num: "10",
+    gl: "uk",
+    hl: "en",
+  });
+
+  const resp = await fetch(
+    `https://serpapi.com/search.json?${params.toString()}`
+  );
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`SerpApi search error: ${resp.status} ${text}`);
+  }
+
+  const data = await resp.json();
+  const organicResults = data?.organic_results ?? [];
+
+  return organicResults
+    .map((result: any) => {
+      // Try to extract price from snippet
+      const snippet = result.snippet ?? "";
+      const priceMatch = snippet.match(/£\s?(\d+(?:\.\d{2})?)/);
+      const priceValue = priceMatch ? parseFloat(priceMatch[1]) : null;
+
+      // Get thumbnail image if available
+      const image = result.thumbnail ?? null;
+
+      return {
+        platform: platform as Platform,
+        title: String(result.title ?? "")
+          .replace(/\s*[-|].*$/, "")
+          .trim(),
+        url: String(result.link ?? ""),
+        image_url: image ? String(image) : null,
+        price_value: priceValue,
+        price_currency: priceValue ? "GBP" : null,
+        item_condition: null,
+        listing_brand: null,
+      };
+    })
+    .filter((l: Listing) =>
+      l.url.includes(site) &&
+      !l.url.includes("/profile/") &&
+      !l.url.includes("/brand/") &&
+      !l.url.includes("/catalog/") &&
+      !l.url.includes("/members/")
+    );
+}
 
   const platform = site === "vinted.co.uk" ? "vinted_google" : "depop_google";
 
