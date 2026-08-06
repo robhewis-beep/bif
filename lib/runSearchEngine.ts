@@ -591,59 +591,6 @@ async function googleSiteSearch(
 }
 
   const platform = site === "vinted.co.uk" ? "vinted_google" : "depop_google";
-
-  // Build a strong query including site restriction
-  const siteQuery = `site:${site} ${query}`;
-
-  const params = new URLSearchParams({
-    key: apiKey,
-    cx,
-    q: siteQuery,
-    num: "10",
-  });
-
-  const resp = await fetch(
-    `https://www.googleapis.com/customsearch/v1?${params.toString()}`
-  );
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Google search error: ${resp.status} ${text}`);
-  }
-
-  const data = await resp.json();
-  const items = data?.items ?? [];
-
-  return items
-    .map((result: any) => {
-      // Extract price from snippet if present
-      const snippet = result.snippet ?? "";
-      const priceMatch = snippet.match(/£\s?(\d+(?:\.\d{2})?)/);
-      const priceValue = priceMatch ? parseFloat(priceMatch[1]) : null;
-
-      // Extract image from page metadata if available
-      const image =
-        result.pagemap?.cse_image?.[0]?.src ??
-        result.pagemap?.cse_thumbnail?.[0]?.src ??
-        null;
-
-      return {
-        platform: platform as Platform,
-        title: String(result.title ?? "").replace(/\s*[-|].*$/, "").trim(),
-        url: String(result.link ?? ""),
-        image_url: image ? String(image) : null,
-        price_value: priceValue,
-        price_currency: priceValue ? "GBP" : null,
-        item_condition: null,
-        listing_brand: null,
-      };
-    })
-    .filter((l: Listing) =>
-      l.url.includes(site) &&
-      !l.url.includes("/profile/") &&
-      !l.url.includes("/brand/") &&
-      !l.url.includes("/catalog/")
-    );
 }
 
 async function ebayGetByLegacyId(legacyId: string): Promise<{
