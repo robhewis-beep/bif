@@ -332,6 +332,14 @@ export default function DashboardPage() {
                       View found
                     </Link>
 
+                    <Link
+                      href={`/add?edit=${it.id}`}
+                      className="bif-btn"
+                      style={{ fontSize: 12, padding: "5px 11px" }}
+                    >
+                      Edit
+                    </Link>
+
                     <button
                       type="button"
                       className="bif-btn"

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import Link from "next/link";
 
@@ -18,6 +18,8 @@ const GENDERS = ["Unisex", "Men", "Women", "Boys", "Girls"];
 
 export default function AddPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
 
   const [brand, setBrand] = useState("");
   const [category, setCategory] = useState("Fleece");
@@ -40,6 +42,43 @@ export default function AddPage() {
   const [suggesting, setSuggesting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
+  const [loadingItem, setLoadingItem] = useState(false);
+    useEffect(() => {
+    if (!editId) return;
+
+    async function loadItem() {
+      setLoadingItem(true);
+      const { data, error } = await supabase
+        .from("tracked_items")
+        .select("*")
+        .eq("id", editId)
+        .single();
+
+      if (error || !data) {
+        setError("Could not load item for editing.");
+        setLoadingItem(false);
+        return;
+      }
+
+      setBrand(data.brand ?? "");
+      setCategory(data.category ?? "Fleece");
+      setKeywords(data.item_name ?? "");
+      setSize(data.size ?? "");
+      setColor(data.color ?? "");
+      setCondition(data.condition ?? "Any");
+      setMaxPrice(data.max_price ?? "");
+      setSearchFrequency((data.search_frequency as "daily" | "weekly") ?? "daily");
+      setIsPaused(data.is_paused ?? false);
+      setImageOnlySearch(data.image_only_search ?? false);
+      setPlatforms(data.platforms?.length ? data.platforms : ["ebay"]);
+      setExistingImageUrl(data.reference_image_url ?? null);
+      setLoadingItem(false);
+    }
+
+    loadItem();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId]);
 
   async function uploadReferenceImage(userId: string) {
     if (!imageFile) return null;
@@ -136,7 +175,8 @@ export default function AddPage() {
       const user = sessionData.session?.user;
       if (!user) { router.push("/login"); return; }
 
-      const referenceImageUrl = await uploadReferenceImage(user.id);
+            const newImageUrl = await uploadReferenceImage(user.id);
+      const referenceImageUrl = newImageUrl ?? existingImageUrl;
 
       const hasAnyText = brand.trim() || category || keywords.trim() || size.trim();
       if (!hasAnyText && !referenceImageUrl) {
@@ -148,8 +188,7 @@ export default function AddPage() {
 
       const autoQuery = buildSearchQuery();
 
-      const { error } = await supabase.from("tracked_items").insert({
-        user_id: user.id,
+      const itemData = {
         brand: brand.trim() || null,
         item_name: keywords.trim() || null,
         category: category || null,
@@ -165,9 +204,21 @@ export default function AddPage() {
         reference_image_url: referenceImageUrl,
         image_only_search: imageOnlySearch,
         platforms: platforms,
-      });
+      };
 
-      if (error) throw error;
+      if (editId) {
+        const { error } = await supabase
+          .from("tracked_items")
+          .update(itemData)
+          .eq("id", editId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("tracked_items")
+          .insert({ user_id: user.id, ...itemData });
+        if (error) throw error;
+      }
+
       router.push("/dashboard");
     } catch (err: any) {
       setError(err?.message ?? "Something went wrong");
@@ -229,7 +280,7 @@ export default function AddPage() {
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "32px 24px 60px" }}>
 
         {/* Header */}
-        <div className="bif-eyebrow" style={{ marginBottom: 8 }}>New search</div>
+                <div className="bif-eyebrow" style={{ marginBottom: 8 }}>{editId ? "Edit search" : "New search"}</div>
         <h1 style={{
           fontFamily: "var(--bif-font-serif)",
           fontSize: 26,
@@ -237,11 +288,24 @@ export default function AddPage() {
           color: "var(--bif-text)",
           margin: "0 0 6px",
         }}>
-          Add a tracked item
+          {editId ? "Edit tracked item" : "Add a tracked item"}
         </h1>
         <p style={{ fontSize: 13, color: "var(--bif-mauve)", margin: "0 0 28px" }}>
-          We'll search for this automatically and alert you when something is found.
+          {editId
+            ? "Update the details of this tracked item."
+            : "We'll search for this automatically and alert you when something is found."}
         </p>
+
+        {existingImageUrl && !imagePreviewUrl && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 12, color: "var(--bif-mauve)", marginBottom: 6 }}>Current reference image</div>
+            <img
+              src={existingImageUrl}
+              alt="Current reference"
+              style={{ width: 100, height: 100, objectFit: "cover", borderRadius: 10, border: "1px solid var(--bif-border)" }}
+            />
+          </div>
+        )}
 
         <form onSubmit={onSubmit} style={{ display: "grid", gap: 20 }}>
 
@@ -588,7 +652,7 @@ export default function AddPage() {
               justifyContent: "center",
             }}
           >
-            {loading ? "Saving…" : "Save tracked item"}
+                        {loading ? "Saving…" : editId ? "Update tracked item" : "Save tracked item"}
           </button>
 
         </form>
