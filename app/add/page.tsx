@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import Link from "next/link";
@@ -16,7 +16,7 @@ const CATEGORIES = [
 const CONDITIONS = ["Any", "New", "Used - Excellent", "Used - Good", "Used - Fair"];
 const GENDERS = ["Unisex", "Men", "Women", "Boys", "Girls"];
 
-export default function AddPage() {
+function AddPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
@@ -658,5 +658,25 @@ export default function AddPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function AddPage() {
+  return (
+    <Suspense fallback={
+      <div style={{
+        minHeight: "100vh",
+        background: "var(--bif-bg)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--bif-mauve)",
+        fontFamily: "var(--bif-font-sans)",
+      }}>
+        Loading…
+      </div>
+    }>
+      <AddPageInner />
+    </Suspense>
   );
 }
